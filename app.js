@@ -49,6 +49,7 @@ const auth = getAuth(app);
 const db = getFirestore(app);
 const provider = new GoogleAuthProvider();
 provider.setCustomParameters({ prompt: "select_account" });
+const canSeedFromLocalFile = ["localhost", "127.0.0.1"].includes(window.location.hostname);
 
 const state = {
   user: null,
@@ -279,7 +280,7 @@ function updateAuthUI() {
   const signedIn = Boolean(state.user);
   elements.loginButton.hidden = signedIn;
   elements.logoutButton.hidden = !signedIn;
-  elements.seedButton.hidden = !signedIn || state.permissionDenied;
+  elements.seedButton.hidden = !canSeedFromLocalFile || !signedIn || state.permissionDenied;
   elements.userLabel.textContent = signedIn
     ? `${state.user.email || state.user.displayName || "Googleユーザー"}${state.updatedAt ? ` / ${formatUpdatedAt(state.updatedAt)}` : ""}`
     : "Googleアカウントで表示";
