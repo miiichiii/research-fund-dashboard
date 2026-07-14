@@ -1,0 +1,23 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function isApprovedUser() {
+      return request.auth != null
+        && request.auth.token.email_verified == true
+        && request.auth.token.email in [
+          // Keep the real allowlist in Firebase Console or a private rules file.
+          // Do not commit personal email addresses to a public repository.
+          "approved-user@example.com",
+        ];
+    }
+
+    match /researchFundDashboards/{dashboardId} {
+      allow read, write: if isApprovedUser();
+    }
+
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

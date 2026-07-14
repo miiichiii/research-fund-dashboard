@@ -1,0 +1,690 @@
+import { initializeApp } from "https://www.gstatic.com/firebasejs/12.14.0/firebase-app.js";
+import {
+  browserLocalPersistence,
+  getAuth,
+  GoogleAuthProvider,
+  onAuthStateChanged,
+  setPersistence,
+  signInWithPopup,
+  signOut,
+} from "https://www.gstatic.com/firebasejs/12.14.0/firebase-auth.js";
+import {
+  doc,
+  getFirestore,
+  onSnapshot,
+  serverTimestamp,
+  setDoc,
+} from "https://www.gstatic.com/firebasejs/12.14.0/firebase-firestore.js";
+import { firebaseConfig } from "./firebase-config.js";
+
+const DASHBOARD_COLLECTION = "researchFundDashboards";
+const DASHBOARD_ID = "main";
+
+const COLLECTIONS = {
+  dashboard: `${DASHBOARD_COLLECTION}/${DASHBOARD_ID}`,
+};
+
+const statusLabels = {
+  confirmed: "確認済み",
+  partial: "一部確認",
+  unknown: "未確認",
+  rough: "粗枠",
+  spent: "記録済み",
+  provisional: "仮更新",
+  fixed: "先引き",
+  check: "要確認",
+  later: "後回し",
+};
+
+const emptyDashboard = {
+  funds: [],
+  allocations: [],
+  lineItems: [],
+  checks: [],
+  projects: [],
+};
+
+const app = initializeApp(firebaseConfig);
+const auth = getAuth(app);
+const db = getFirestore(app);
+const provider = new GoogleAuthProvider();
+provider.setCustomParameters({ prompt: "select_account" });
+
+const state = {
+  user: null,
+  data: { ...emptyDashboard },
+  loading: false,
+  loaded: false,
+  permissionDenied: false,
+  error: null,
+  updatedAt: null,
+  updatedBy: "",
+  activeFilter: "all",
+  unsubscribeDashboard: null,
+};
+
+const panels = {
+  overview: document.getElementById("overviewPanel"),
+  funds: document.getElementById("fundsPanel"),
+  allocations: document.getElementById("allocationsPanel"),
+  items: document.getElementById("itemsPanel"),
+  checks: document.getElementById("checksPanel"),
+};
+
+const elements = {
+  loginButton: document.getElementById("loginButton"),
+  logoutButton: document.getElementById("logoutButton"),
+  seedButton: document.getElementById("seedButton"),
+  syncStatus: document.getElementById("syncStatus"),
+  userLabel: document.getElementById("userLabel"),
+  authGate: document.getElementById("authGate"),
+  authGateMessage: document.getElementById("authGateMessage"),
+  viewTabs: Array.from(document.querySelectorAll(".view-tab")),
+  segments: Array.from(document.querySelectorAll(".segment")),
+  summaryGrid: document.getElementById("summaryGrid"),
+  priorityList: document.getElementById("priorityList"),
+  projectList: document.getElementById("projectList"),
+  fundCards: document.getElementById("fundCards"),
+  allocationTable: document.getElementById("allocationTable"),
+  lineItemTable: document.getElementById("lineItemTable"),
+  checkList: document.getElementById("checkList"),
+};
+
+setPersistence(auth, browserLocalPersistence).catch((error) => {
+  setSyncStatus(`認証保存エラー: ${error.code}`, "blocked");
+});
+
+elements.loginButton.addEventListener("click", async () => {
+  try {
+    await signInWithPopup(auth, provider);
+  } catch (error) {
+    if (error.code === "auth/popup-closed-by-user") {
+      setSyncStatus("ログインが中断されました", "check");
+      return;
+    }
+    if (["auth/popup-blocked", "auth/cancelled-popup-request"].includes(error.code)) {
+      setSyncStatus("ポップアップを許可してください", "check");
+      return;
+    }
+    if (error.code === "auth/unauthorized-domain") {
+      setSyncStatus("Firebase認証ドメイン未許可", "blocked");
+      return;
+    }
+    setSyncStatus(`ログインエラー: ${error.code}`, "blocked");
+  }
+});
+
+elements.logoutButton.addEventListener("click", async () => {
+  await signOut(auth);
+});
+
+elements.seedButton.addEventListener("click", seedDashboardFromLocalFile);
+
+elements.viewTabs.forEach((tab) => {
+  tab.addEventListener("click", () => activateView(tab.dataset.view));
+});
+
+elements.segments.forEach((segment) => {
+  segment.addEventListener("click", () => {
+    state.activeFilter = segment.dataset.filter;
+    elements.segments.forEach((candidate) => candidate.classList.toggle("is-active", candidate === segment));
+    renderLineItems();
+  });
+});
+
+onAuthStateChanged(auth, (user) => {
+  resetDashboardSubscription();
+  state.user = user;
+  state.error = null;
+  state.permissionDenied = false;
+  state.data = { ...emptyDashboard };
+  state.loaded = false;
+  state.loading = Boolean(user);
+  state.updatedAt = null;
+  state.updatedBy = "";
+
+  if (!user) {
+    setSyncStatus("ログイン待ち", "locked");
+    render();
+    return;
+  }
+
+  setSyncStatus("Firestore読み込み中", "provisional");
+  render();
+  subscribeDashboard();
+});
+
+function subscribeDashboard() {
+  state.unsubscribeDashboard = onSnapshot(dashboardRef(), (snapshot) => {
+    state.loading = false;
+    state.permissionDenied = false;
+    state.error = null;
+
+    if (!snapshot.exists()) {
+      state.data = { ...emptyDashboard };
+      state.loaded = false;
+      state.updatedAt = null;
+      state.updatedBy = "";
+      setSyncStatus("Firestore台帳なし", "check");
+      render();
+      return;
+    }
+
+    const payload = snapshot.data();
+    state.data = normalizeDashboardData(payload);
+    state.loaded = true;
+    state.updatedAt = payload.updatedAt || null;
+    state.updatedBy = payload.updatedBy || "";
+    setSyncStatus("Firestore同期済み", "confirmed");
+    render();
+  }, (error) => {
+    state.loading = false;
+    state.loaded = false;
+    state.data = { ...emptyDashboard };
+    state.error = error;
+    state.permissionDenied = error.code === "permission-denied";
+    setSyncStatus(state.permissionDenied ? "Firestore権限なし" : `Firestoreエラー: ${error.code}`, "blocked");
+    render();
+  });
+}
+
+async function seedDashboardFromLocalFile() {
+  if (!state.user) return;
+
+  elements.seedButton.disabled = true;
+  setSyncStatus("初期データ投入中", "provisional");
+
+  try {
+    const module = await import(`./seed.local.js?v=${Date.now()}`);
+    const initialData = module.dashboardData;
+
+    if (!initialData || typeof initialData !== "object") {
+      throw new Error("seed.local.js に dashboardData がありません");
+    }
+
+    const normalized = normalizeDashboardData(initialData);
+    await setDoc(dashboardRef(), {
+      ...sanitizeForFirestore(normalized),
+      updatedAt: serverTimestamp(),
+      updatedBy: state.user.email || state.user.uid,
+      source: "local-seed",
+    }, { merge: true });
+
+    setSyncStatus("初期データ投入済み", "confirmed");
+  } catch (error) {
+    if (error.message.includes("Failed to fetch dynamically imported module")) {
+      setSyncStatus("seed.local.js がありません", "blocked");
+    } else if (error.code) {
+      setSyncStatus(`投入エラー: ${error.code}`, "blocked");
+    } else {
+      setSyncStatus(`投入エラー: ${error.message}`, "blocked");
+    }
+    render();
+  } finally {
+    elements.seedButton.disabled = false;
+  }
+}
+
+function dashboardRef() {
+  return doc(db, DASHBOARD_COLLECTION, DASHBOARD_ID);
+}
+
+function resetDashboardSubscription() {
+  if (state.unsubscribeDashboard) {
+    state.unsubscribeDashboard();
+    state.unsubscribeDashboard = null;
+  }
+}
+
+function normalizeDashboardData(payload = {}) {
+  return {
+    funds: sortByOrder(asArray(payload.funds)),
+    allocations: sortByOrder(asArray(payload.allocations)),
+    lineItems: sortByOrder(asArray(payload.lineItems)),
+    checks: sortByOrder(asArray(payload.checks)),
+    projects: sortByOrder(asArray(payload.projects)),
+  };
+}
+
+function asArray(value) {
+  return Array.isArray(value) ? value.map((entry, index) => ({ order: index + 1, ...entry })) : [];
+}
+
+function sortByOrder(items) {
+  return items.slice().sort((a, b) => (a.order ?? 9999) - (b.order ?? 9999));
+}
+
+function sanitizeForFirestore(value) {
+  return JSON.parse(JSON.stringify(value));
+}
+
+function render() {
+  updateAuthUI();
+
+  if (!state.user || !state.loaded) {
+    renderEmptyDashboard();
+    return;
+  }
+
+  renderSummary();
+  renderPriority();
+  renderProjects();
+  renderFunds();
+  renderAllocations();
+  renderLineItems();
+  renderChecks();
+}
+
+function updateAuthUI() {
+  const signedIn = Boolean(state.user);
+  elements.loginButton.hidden = signedIn;
+  elements.logoutButton.hidden = !signedIn;
+  elements.seedButton.hidden = !signedIn || state.permissionDenied;
+  elements.userLabel.textContent = signedIn
+    ? `${state.user.email || state.user.displayName || "Googleユーザー"}${state.updatedAt ? ` / ${formatUpdatedAt(state.updatedAt)}` : ""}`
+    : "Googleアカウントで表示";
+
+  elements.authGate.hidden = signedIn && state.loaded && !state.error;
+  if (!signedIn) {
+    elements.authGateMessage.textContent = "研究費の金額や明細は静的ファイルに置かず、許可されたGoogleアカウントでログインした時だけFirestoreから読み込みます。";
+  } else if (state.loading) {
+    elements.authGateMessage.textContent = "Firestoreから研究費台帳を読み込んでいます。";
+  } else if (state.permissionDenied) {
+    elements.authGateMessage.textContent = "ログインはできていますが、このGoogleアカウントには研究費台帳のFirestore権限がありません。Firestore rulesの許可ユーザーを確認してください。";
+  } else if (state.error) {
+    elements.authGateMessage.textContent = `Firestoreの読み込みでエラーが出ています: ${state.error.code || state.error.message}`;
+  } else if (!state.loaded) {
+    elements.authGateMessage.textContent = "Firestoreに研究費台帳がまだありません。ローカルの seed.local.js がある場合は、初期データ投入ボタンで作成できます。";
+  }
+}
+
+function setSyncStatus(label, status) {
+  elements.syncStatus.textContent = label;
+  elements.syncStatus.dataset.status = status;
+}
+
+function renderEmptyDashboard() {
+  const message = state.user
+    ? "Firestoreの研究費データを読み込み中、または未作成です。"
+    : "Googleログイン後に研究費データを表示します。";
+
+  elements.summaryGrid.replaceChildren(renderEmptyState(message));
+  elements.priorityList.replaceChildren();
+  elements.projectList.replaceChildren();
+  elements.fundCards.replaceChildren(renderEmptyState(message));
+  elements.allocationTable.replaceChildren(renderTable(
+    ["配分枠", "資金枠", "プロジェクト", "区分", "枠/目安", "記録済み", "状態", "次に確認"],
+    [],
+  ));
+  elements.lineItemTable.replaceChildren(renderTable(
+    ["状態", "支出項目", "資金枠", "配分枠", "プロジェクト", "金額", "日付", "次に確認"],
+    [],
+  ));
+  elements.checkList.replaceChildren(renderEmptyState(message));
+}
+
+function renderEmptyState(message) {
+  const empty = document.createElement("div");
+  empty.className = "empty-state";
+  empty.textContent = message;
+  return empty;
+}
+
+function formatYen(value) {
+  if (!Number.isFinite(value)) return "未確認";
+  return new Intl.NumberFormat("ja-JP", {
+    style: "currency",
+    currency: "JPY",
+    maximumFractionDigits: 0,
+  }).format(value);
+}
+
+function formatUpdatedAt(value) {
+  const date = typeof value?.toDate === "function" ? value.toDate() : null;
+  if (!date) return "更新時刻未取得";
+  return new Intl.DateTimeFormat("ja-JP", {
+    dateStyle: "short",
+    timeStyle: "short",
+  }).format(date);
+}
+
+function funds() {
+  return state.data.funds || [];
+}
+
+function allocations() {
+  return state.data.allocations || [];
+}
+
+function lineItems() {
+  return state.data.lineItems || [];
+}
+
+function checks() {
+  return state.data.checks || [];
+}
+
+function projects() {
+  return state.data.projects || [];
+}
+
+function fundById(id) {
+  return funds().find((fund) => fund.id === id);
+}
+
+function allocationById(id) {
+  return allocations().find((allocation) => allocation.id === id);
+}
+
+function renderSummary() {
+  const personal = fundById("personal2201");
+  const project = fundById("project2202");
+  const takeda = fundById("takeda7023");
+  const membershipReserve = lineItems()
+    .filter((item) => item.status === "fixed")
+    .reduce((sum, item) => sum + (item.amountYen || 0), 0);
+  const nattoPlanned = allocations()
+    .filter((allocation) => allocation.project === "Natto_MASH" && Number.isFinite(allocation.plannedYen))
+    .reduce((sum, allocation) => sum + allocation.plannedYen, 0);
+  const unknownFunds = funds().filter((fund) => ["unknown", "rough"].includes(fund.status)).length;
+
+  const cards = [
+    {
+      label: "2201 個人枠",
+      value: formatYen(personal?.remainingYen),
+      body: "教育研究費。学会費を先に引いてから購入候補を判断する。",
+      tone: "green",
+    },
+    {
+      label: "2201 差引後目安",
+      value: Number.isFinite(personal?.remainingYen) ? formatYen(personal.remainingYen - membershipReserve) : "未確認",
+      body: `学会費 ${formatYen(membershipReserve)} を全て未払いと仮定した残り。`,
+      tone: "blue",
+    },
+    {
+      label: "2202 プロジェクト枠",
+      value: formatYen(project?.remainingYen),
+      body: "プロジェクト研究費。2201とは別計算。使途制限とメンバー確認が先。",
+      tone: "gold",
+    },
+    {
+      label: "武田財団",
+      value: formatYen(takeda?.remainingYen),
+      body: "奨学寄付金。記録済み明細と一部仮更新まで確認済み。",
+      tone: "green",
+    },
+    {
+      label: "Natto_MASH 仮配分",
+      value: formatYen(nattoPlanned),
+      body: "Natto関連の配分候補。確認済み残額の合算ではなく、計画側の見通し。",
+      tone: "pink",
+    },
+    {
+      label: "未確認の資金枠",
+      value: `${unknownFunds}件`,
+      body: "科研費23K05586、科研費25H00958、AMED/橋渡しの扱いを確認する。",
+      tone: "red",
+    },
+  ];
+
+  elements.summaryGrid.replaceChildren(...cards.map(renderSummaryCard));
+}
+
+function renderSummaryCard(card) {
+  const article = document.createElement("article");
+  article.className = "summary-card";
+  article.dataset.tone = card.tone;
+
+  const label = document.createElement("span");
+  label.className = "card-label";
+  label.textContent = card.label;
+
+  const value = document.createElement("strong");
+  value.textContent = card.value;
+
+  const body = document.createElement("p");
+  body.textContent = card.body;
+
+  article.append(label, value, body);
+  return article;
+}
+
+function renderPriority() {
+  const highPriorityChecks = checks()
+    .filter((check) => check.priority === "high")
+    .map((check) => check.detail);
+  const fallback = [
+    "学会費3件の支払い済み/未払いと、2201から払えるかを確認する。",
+    "2201の支出期限を確認して、個人枠で今買うものを決める。",
+    "2202のメンバー/使途制限を確認して、Natto_MASH関連へ配分する。",
+  ];
+  const steps = highPriorityChecks.length ? highPriorityChecks : fallback;
+
+  elements.priorityList.replaceChildren(...steps.map((step) => {
+    const item = document.createElement("li");
+    item.textContent = step;
+    return item;
+  }));
+}
+
+function renderProjects() {
+  elements.projectList.replaceChildren(...projects().map((project) => {
+    const card = document.createElement("article");
+    card.className = "project-card";
+
+    const meta = document.createElement("span");
+    meta.className = "status-pill";
+    meta.textContent = project.kind;
+
+    const title = document.createElement("h4");
+    title.textContent = project.name;
+
+    const note = document.createElement("p");
+    note.textContent = project.note;
+
+    card.append(meta, title, note);
+    if (project.url) {
+      const link = document.createElement("a");
+      link.href = project.url;
+      link.target = "_blank";
+      link.rel = "noopener";
+      link.className = "inline-link";
+      link.textContent = "既存ボードを開く";
+      card.append(link);
+    }
+    return card;
+  }));
+}
+
+function renderFunds() {
+  elements.fundCards.replaceChildren(...funds().map((fund) => {
+    const card = document.createElement("article");
+    card.className = "fund-card";
+    card.dataset.status = fund.status;
+
+    const head = document.createElement("div");
+    head.className = "fund-head";
+
+    const titleWrap = document.createElement("div");
+    const label = document.createElement("p");
+    label.className = "card-label";
+    label.textContent = `${fund.code} / ${fund.category}`;
+    const title = document.createElement("h3");
+    title.textContent = fund.name;
+    titleWrap.append(label, title);
+
+    const status = statusBadge(statusLabels[fund.status] || fund.status, fund.status);
+    head.append(titleWrap, status);
+
+    const metrics = document.createElement("div");
+    metrics.className = "metric-grid";
+    [
+      ["総額", formatYen(fund.totalYen)],
+      ["本執行", formatYen(fund.executedYen)],
+      ["仮更新", formatYen(fund.provisionalYen)],
+      ["実質残額", formatYen(fund.remainingYen)],
+    ].forEach(([name, value]) => metrics.append(renderMetric(name, value)));
+
+    const note = document.createElement("p");
+    note.className = "muted";
+    note.textContent = fund.note;
+
+    const source = document.createElement("span");
+    source.className = "mini-label";
+    source.textContent = fund.confidence;
+
+    card.append(head, metrics, note, source);
+    return card;
+  }));
+}
+
+function renderMetric(name, value) {
+  const metric = document.createElement("div");
+  metric.className = "metric";
+  const label = document.createElement("span");
+  label.textContent = name;
+  const strong = document.createElement("strong");
+  strong.textContent = value;
+  metric.append(label, strong);
+  return metric;
+}
+
+function renderAllocations() {
+  const rows = allocations().map((allocation) => [
+    allocation.title,
+    fundById(allocation.fundId)?.name || "-",
+    allocation.project,
+    allocation.category,
+    formatYen(allocation.plannedYen),
+    formatYen(allocation.usedYen),
+    statusLabels[allocation.status] || allocation.status,
+    allocation.next,
+  ]);
+  elements.allocationTable.replaceChildren(renderTable(
+    ["配分枠", "資金枠", "プロジェクト", "区分", "枠/目安", "記録済み", "状態", "次に確認"],
+    rows,
+  ));
+}
+
+function renderLineItems() {
+  const visible = lineItems().filter((item) => {
+    if (state.activeFilter === "all") return true;
+    if (state.activeFilter === "natto") return item.project === "Natto_MASH";
+    if (state.activeFilter === "fixed") return item.status === "fixed";
+    if (state.activeFilter === "spent") return ["spent", "provisional"].includes(item.status);
+    return item.status === state.activeFilter;
+  });
+
+  const rows = visible.map((item) => [
+    statusBadge(statusLabels[item.status] || item.status, item.status),
+    item.title,
+    fundById(item.fundId)?.name || "-",
+    allocationById(item.allocationId)?.title || "-",
+    item.project,
+    formatYen(item.amountYen),
+    item.date,
+    item.next,
+  ]);
+  elements.lineItemTable.replaceChildren(renderTable(
+    ["状態", "支出項目", "資金枠", "配分枠", "プロジェクト", "金額", "日付", "次に確認"],
+    rows,
+  ));
+}
+
+function renderChecks() {
+  elements.checkList.replaceChildren(...checks().map((check) => {
+    const card = document.createElement("article");
+    card.className = "check-card";
+    card.dataset.priority = check.priority;
+
+    const meta = document.createElement("div");
+    meta.className = "item-meta";
+    meta.append(statusBadge(priorityLabel(check.priority), check.priority), textSpan(check.owner, "mini-label"));
+
+    const title = document.createElement("h3");
+    title.textContent = check.title;
+
+    const detail = document.createElement("p");
+    detail.textContent = check.detail;
+
+    card.append(meta, title, detail);
+    return card;
+  }));
+}
+
+function renderTable(headers, rows) {
+  const wrap = document.createElement("div");
+  wrap.className = "table-wrap";
+  const table = document.createElement("table");
+
+  const thead = document.createElement("thead");
+  const headRow = document.createElement("tr");
+  headers.forEach((header) => {
+    const cell = document.createElement("th");
+    cell.textContent = header;
+    headRow.append(cell);
+  });
+  thead.append(headRow);
+
+  const tbody = document.createElement("tbody");
+  if (!rows.length) {
+    const tr = document.createElement("tr");
+    const td = document.createElement("td");
+    td.colSpan = headers.length;
+    td.textContent = "表示できるデータがありません。";
+    tr.append(td);
+    tbody.append(tr);
+  } else {
+    rows.forEach((row) => {
+      const tr = document.createElement("tr");
+      row.forEach((value) => {
+        const td = document.createElement("td");
+        if (value instanceof Node) {
+          td.append(value);
+        } else {
+          td.textContent = value;
+        }
+        tr.append(td);
+      });
+      tbody.append(tr);
+    });
+  }
+
+  table.append(thead, tbody);
+  wrap.append(table);
+  return wrap;
+}
+
+function statusBadge(label, status) {
+  const badge = document.createElement("span");
+  badge.className = "status-pill";
+  badge.dataset.status = status;
+  badge.textContent = label;
+  return badge;
+}
+
+function textSpan(value, className) {
+  const span = document.createElement("span");
+  span.className = className;
+  span.textContent = value;
+  return span;
+}
+
+function priorityLabel(priority) {
+  if (priority === "high") return "高";
+  if (priority === "medium") return "中";
+  return "低";
+}
+
+function activateView(view) {
+  Object.entries(panels).forEach(([key, panel]) => {
+    panel.hidden = key !== view;
+  });
+  elements.viewTabs.forEach((tab) => {
+    const active = tab.dataset.view === view;
+    tab.classList.toggle("is-active", active);
+    tab.setAttribute("aria-selected", String(active));
+  });
+}
+
+render();

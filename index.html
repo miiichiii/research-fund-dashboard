@@ -1,0 +1,143 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="robots" content="noindex,nofollow,noarchive,noimageindex,nosnippet">
+  <title>研究費横断ボード</title>
+  <link rel="stylesheet" href="./styles.css">
+</head>
+<body>
+  <header class="topbar">
+    <div class="title-block">
+      <p class="kicker">Research funds</p>
+      <h1>研究費横断ボード</h1>
+    </div>
+    <div class="status-stack" aria-label="status">
+      <span id="syncStatus" class="status-chip" data-status="locked">ログイン待ち</span>
+      <span id="userLabel" class="status-note">Googleアカウントで表示</span>
+      <div class="auth-actions" aria-label="認証操作">
+        <button id="loginButton" class="button primary" type="button">Googleログイン</button>
+        <button id="logoutButton" class="button ghost" type="button" hidden>ログアウト</button>
+        <button id="seedButton" class="button ghost" type="button" hidden>初期データ投入</button>
+      </div>
+    </div>
+  </header>
+
+  <main>
+    <section class="intro-band" aria-label="運用方針">
+      <div>
+        <p class="kicker">Role split</p>
+        <h2>全体の財布はここ、Natto_MASHはプロジェクト別ビューで扱う</h2>
+      </div>
+      <p>
+        2201教育研究費、2202プロジェクト研究費、7023武田財団、科研費、AMED/橋渡しを横断で見ます。
+        Natto_MASH管理ボードは残し、関連する支出だけをこの親ボードから参照します。
+      </p>
+      <a class="button ghost" href="https://miiichiii.github.io/natto-mash-project-todo/" target="_blank" rel="noopener">Natto_MASHボード</a>
+    </section>
+
+    <section id="authGate" class="panel auth-gate" aria-live="polite">
+      <div>
+        <p class="kicker">Private board</p>
+        <h2>Googleログイン後にFirestoreの研究費データを表示します</h2>
+      </div>
+      <p id="authGateMessage">
+        研究費の金額や明細は静的ファイルに置かず、許可されたGoogleアカウントでログインした時だけFirestoreから読み込みます。
+      </p>
+    </section>
+
+    <nav class="view-tabs" aria-label="表示切替">
+      <button class="view-tab is-active" type="button" data-view="overview" aria-selected="true">概要</button>
+      <button class="view-tab" type="button" data-view="funds" aria-selected="false">資金枠</button>
+      <button class="view-tab" type="button" data-view="allocations" aria-selected="false">配分枠</button>
+      <button class="view-tab" type="button" data-view="items" aria-selected="false">支出項目</button>
+      <button class="view-tab" type="button" data-view="checks" aria-selected="false">未確認</button>
+    </nav>
+
+    <section id="overviewPanel" class="view-panel" aria-labelledby="overviewTitle">
+      <div class="panel-head">
+        <div>
+          <p class="kicker">Dashboard</p>
+          <h2 id="overviewTitle">今日の判断面</h2>
+        </div>
+        <span class="mini-label">財布は別計算</span>
+      </div>
+
+      <section id="summaryGrid" class="summary-grid" aria-label="概要カード"></section>
+
+      <section class="layout-grid">
+        <article class="panel compact-panel">
+          <div class="panel-head">
+            <div>
+              <p class="kicker">Order</p>
+              <h3>まず動く順番</h3>
+            </div>
+          </div>
+          <ol id="priorityList" class="priority-list"></ol>
+        </article>
+
+        <article class="panel compact-panel">
+          <div class="panel-head">
+            <div>
+              <p class="kicker">Projects</p>
+              <h3>プロジェクト別ビュー</h3>
+            </div>
+          </div>
+          <div id="projectList" class="project-list"></div>
+        </article>
+      </section>
+    </section>
+
+    <section id="fundsPanel" class="view-panel" aria-labelledby="fundsTitle" hidden>
+      <div class="panel-head">
+        <div>
+          <p class="kicker">Funds</p>
+          <h2 id="fundsTitle">資金枠</h2>
+        </div>
+      </div>
+      <div id="fundCards" class="fund-list"></div>
+    </section>
+
+    <section id="allocationsPanel" class="view-panel" aria-labelledby="allocationsTitle" hidden>
+      <div class="panel-head">
+        <div>
+          <p class="kicker">Allocations</p>
+          <h2 id="allocationsTitle">配分枠</h2>
+        </div>
+      </div>
+      <div id="allocationTable"></div>
+    </section>
+
+    <section id="itemsPanel" class="view-panel" aria-labelledby="itemsTitle" hidden>
+      <div class="panel-head">
+        <div>
+          <p class="kicker">Line items</p>
+          <h2 id="itemsTitle">支出項目</h2>
+        </div>
+        <div class="segmented" aria-label="支出項目フィルタ">
+          <button class="segment is-active" type="button" data-filter="all">すべて</button>
+          <button class="segment" type="button" data-filter="natto">Natto</button>
+          <button class="segment" type="button" data-filter="fixed">先引き</button>
+          <button class="segment" type="button" data-filter="spent">記録済み</button>
+          <button class="segment" type="button" data-filter="check">要確認</button>
+          <button class="segment" type="button" data-filter="later">後回し</button>
+        </div>
+      </div>
+      <div id="lineItemTable"></div>
+    </section>
+
+    <section id="checksPanel" class="view-panel" aria-labelledby="checksTitle" hidden>
+      <div class="panel-head">
+        <div>
+          <p class="kicker">Open loops</p>
+          <h2 id="checksTitle">未確認事項</h2>
+        </div>
+      </div>
+      <div id="checkList" class="check-grid"></div>
+    </section>
+  </main>
+
+  <script type="module" src="./app.js"></script>
+</body>
+</html>
