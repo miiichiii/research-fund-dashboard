@@ -692,6 +692,85 @@ tbody tr:last-child td {
   border-color: rgba(169, 130, 66, 0.28);
 }
 
+.ipu-orders-lead {
+  margin: -4px 0 0;
+  color: var(--muted);
+  line-height: 1.55;
+}
+
+.ipu-order-list {
+  display: grid;
+  gap: 14px;
+}
+
+.ipu-order-card {
+  padding: 16px;
+  background: rgba(255, 250, 241, 0.78);
+  border: 1px solid rgba(99, 76, 54, 0.15);
+  border-radius: 8px;
+  box-shadow: var(--shadow);
+}
+
+.ipu-order-head,
+.copy-field-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.copy-field-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  margin-top: 12px;
+}
+
+.copy-field {
+  min-width: 0;
+  padding: 11px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+
+.copy-field-label {
+  color: var(--green);
+  font-size: 0.78rem;
+  font-weight: 900;
+}
+
+.copy-field pre {
+  margin: 10px 0 0;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+  font: 700 0.9rem/1.45 var(--font-ui);
+}
+
+.copy-button {
+  padding: 4px 9px;
+  color: var(--blue);
+  background: var(--blue-soft);
+  border: 1px solid rgba(81, 109, 134, 0.24);
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 0.72rem;
+  font-weight: 850;
+}
+
+.copy-button:disabled {
+  color: var(--muted);
+  cursor: not-allowed;
+  opacity: 0.58;
+}
+
+.ipu-order-note {
+  margin: 12px 0 0;
+  color: var(--muted);
+  font-size: 0.82rem;
+  line-height: 1.5;
+}
+
 @media (max-width: 900px) {
   .topbar {
     align-items: flex-start;
@@ -713,6 +792,10 @@ tbody tr:last-child td {
   }
 
   .fund-detail-columns {
+    grid-template-columns: 1fr;
+  }
+
+  .copy-field-grid {
     grid-template-columns: 1fr;
   }
 }

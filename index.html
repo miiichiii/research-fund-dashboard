@@ -51,6 +51,7 @@
       <button class="view-tab" type="button" data-view="funds" aria-selected="false">資金枠</button>
       <button class="view-tab" type="button" data-view="allocations" aria-selected="false">配分枠</button>
       <button class="view-tab" type="button" data-view="items" aria-selected="false">支出項目</button>
+      <button class="view-tab" type="button" data-view="ipu-orders" aria-selected="false">IPUで注文</button>
       <button class="view-tab" type="button" data-view="checks" aria-selected="false">未確認</button>
     </nav>
 
@@ -134,6 +135,18 @@
         </div>
       </div>
       <div id="checkList" class="check-grid"></div>
+    </section>
+
+    <section id="ipuOrdersPanel" class="view-panel" aria-labelledby="ipuOrdersTitle" hidden>
+      <div class="panel-head">
+        <div>
+          <p class="kicker">IPU orders</p>
+          <h2 id="ipuOrdersTitle">IPUで注文</h2>
+        </div>
+        <span class="mini-label">項目ごとにコピー</span>
+      </div>
+      <p class="ipu-orders-lead">IPU申請画面へ貼り付ける内容です。見積書で確認できない項目は「要確認」と表示します。</p>
+      <div id="ipuOrderList" class="ipu-order-list"></div>
     </section>
   </main>
 

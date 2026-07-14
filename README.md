@@ -24,7 +24,9 @@ Natto_MASHを別ボードへ分けず、Funds / Allocations / Line items / Open 
 - Firebase project: `project-manage-56fd1`
 - Auth provider: Google
 - Firestore document: `researchFundDashboards/main`
-- Document shape: `{ funds, allocations, lineItems, checks, projects, updatedAt, updatedBy }`
+- Document shape: `{ funds, allocations, lineItems, checks, projects, ipuOrders, updatedAt, updatedBy }`
+
+`ipuOrders` はIPU申請フォーム用の購入候補。`itemName`, `specification`, `catalogNumber`, `quantity` を基本に、判明していれば `unitPriceYen`, `totalYen`, `vendor`, `manufacturer`, `quoteNumber`, `quoteValidUntil` を保存する。不明値を静的ファイルへ埋めず、画面では「要確認」と表示する。
 
 `app.js` には研究費の金額や明細を置かない。初期データは `seed.local.js` から、ログイン後に「初期データ投入」でFirestoreへ保存する。
 

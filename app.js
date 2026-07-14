@@ -42,6 +42,7 @@ const emptyDashboard = {
   lineItems: [],
   checks: [],
   projects: [],
+  ipuOrders: [],
 };
 
 const app = initializeApp(firebaseConfig);
@@ -71,6 +72,7 @@ const panels = {
   allocations: document.getElementById("allocationsPanel"),
   items: document.getElementById("itemsPanel"),
   checks: document.getElementById("checksPanel"),
+  "ipu-orders": document.getElementById("ipuOrdersPanel"),
 };
 
 const elements = {
@@ -90,6 +92,7 @@ const elements = {
   allocationTable: document.getElementById("allocationTable"),
   lineItemTable: document.getElementById("lineItemTable"),
   checkList: document.getElementById("checkList"),
+  ipuOrderList: document.getElementById("ipuOrderList"),
   fundDetailDialog: document.getElementById("fundDetailDialog"),
   fundDetailClose: document.getElementById("fundDetailClose"),
   fundDetailCode: document.getElementById("fundDetailCode"),
@@ -261,6 +264,7 @@ function normalizeDashboardData(payload = {}) {
     lineItems: sortByOrder(asArray(payload.lineItems)),
     checks: sortByOrder(asArray(payload.checks)),
     projects: sortByOrder(asArray(payload.projects)),
+    ipuOrders: sortByOrder(asArray(payload.ipuOrders)),
   };
 }
 
@@ -291,6 +295,7 @@ function render() {
   renderAllocations();
   renderLineItems();
   renderChecks();
+  renderIpuOrders();
 }
 
 function updateAuthUI() {
@@ -339,6 +344,7 @@ function renderEmptyDashboard() {
     [],
   ));
   elements.checkList.replaceChildren(renderEmptyState(message));
+  elements.ipuOrderList.replaceChildren(renderEmptyState(message));
 }
 
 function renderEmptyState(message) {
@@ -384,6 +390,97 @@ function checks() {
 
 function projects() {
   return state.data.projects || [];
+}
+
+function ipuOrders() {
+  return state.data.ipuOrders || [];
+}
+
+function renderIpuOrders() {
+  const orders = ipuOrders();
+  if (!orders.length) {
+    elements.ipuOrderList.replaceChildren(renderEmptyState("IPUで注文する品目はまだ登録されていません。"));
+    return;
+  }
+
+  elements.ipuOrderList.replaceChildren(...orders.map((order) => {
+    const card = document.createElement("article");
+    card.className = "ipu-order-card";
+
+    const head = document.createElement("div");
+    head.className = "ipu-order-head";
+    const titleWrap = document.createElement("div");
+    const id = document.createElement("p");
+    id.className = "kicker";
+    id.textContent = order.purchaseId || "IPU購入候補";
+    const title = document.createElement("h3");
+    title.textContent = order.label || order.itemName || "品名未確認";
+    titleWrap.append(id, title);
+    head.append(titleWrap, statusBadge(order.statusLabel || "申請準備", order.status || "check"));
+
+    const fields = document.createElement("div");
+    fields.className = "copy-field-grid";
+    [
+      ["品名", order.itemName],
+      ["規格・品質", order.specification],
+      ["型番", order.catalogNumber],
+      ["数量", order.quantity],
+      ["単価", formatOptionalYen(order.unitPriceYen)],
+      ["合計金額", formatOptionalYen(order.totalYen)],
+      ["業者名", order.vendor],
+      ["メーカー", order.manufacturer],
+      ["見積番号", order.quoteNumber],
+      ["見積有効期限", order.quoteValidUntil],
+    ].forEach(([label, value]) => fields.append(renderCopyField(label, value)));
+
+    card.append(head, fields);
+    if (order.note) {
+      const note = document.createElement("p");
+      note.className = "ipu-order-note";
+      note.textContent = order.note;
+      card.append(note);
+    }
+    return card;
+  }));
+}
+
+function formatOptionalYen(value) {
+  return Number.isFinite(value) ? formatYen(value) : "";
+}
+
+function renderCopyField(label, rawValue) {
+  const value = rawValue === 0 ? "0" : String(rawValue || "要確認");
+  const field = document.createElement("div");
+  field.className = "copy-field";
+  const fieldHead = document.createElement("div");
+  fieldHead.className = "copy-field-head";
+  const name = document.createElement("span");
+  name.className = "copy-field-label";
+  name.textContent = label;
+  const button = document.createElement("button");
+  button.className = "copy-button";
+  button.type = "button";
+  button.textContent = "コピー";
+  button.disabled = value === "要確認";
+  const output = document.createElement("pre");
+  output.textContent = value;
+  button.addEventListener("click", async () => {
+    try {
+      await navigator.clipboard.writeText(value);
+      button.textContent = "コピー済み";
+      window.setTimeout(() => { button.textContent = "コピー"; }, 1400);
+    } catch {
+      button.textContent = "選択してコピー";
+      const selection = window.getSelection();
+      const range = document.createRange();
+      range.selectNodeContents(output);
+      selection.removeAllRanges();
+      selection.addRange(range);
+    }
+  });
+  fieldHead.append(name, button);
+  field.append(fieldHead, output);
+  return field;
 }
 
 function fundById(id) {
