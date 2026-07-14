@@ -338,6 +338,33 @@ main {
 .summary-card {
   min-height: 148px;
   padding: 16px;
+  color: var(--ink);
+  text-align: left;
+}
+
+.summary-card.is-clickable,
+.fund-card {
+  cursor: pointer;
+  transition: border-color 140ms ease, box-shadow 140ms ease, transform 140ms ease;
+}
+
+.summary-card.is-clickable:hover,
+.fund-card:hover {
+  border-color: var(--green);
+  box-shadow: 0 20px 48px rgba(72, 107, 87, 0.17);
+  transform: translateY(-2px);
+}
+
+.summary-card.is-clickable:focus-visible,
+.fund-card:focus-visible,
+.dialog-close:focus-visible {
+  outline: 3px solid var(--blue);
+  outline-offset: 3px;
+}
+
+.summary-card.is-clickable:active,
+.fund-card:active {
+  transform: translateY(0);
 }
 
 .summary-card[data-tone="blue"] {
@@ -432,6 +459,8 @@ main {
   display: grid;
   gap: 12px;
   padding: 16px;
+  color: var(--ink);
+  text-align: left;
 }
 
 .fund-card[data-status="unknown"] {
@@ -558,6 +587,103 @@ tbody tr:last-child td {
   line-height: 1.5;
 }
 
+.fund-detail-dialog {
+  width: min(1040px, calc(100% - 28px));
+  max-height: calc(100dvh - 28px);
+  padding: 0;
+  color: var(--ink);
+  background: var(--paper);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  box-shadow: var(--shadow);
+}
+
+.fund-detail-dialog::backdrop {
+  background: rgba(46, 41, 34, 0.58);
+  backdrop-filter: blur(3px);
+}
+
+.fund-detail-shell {
+  display: grid;
+  gap: 16px;
+  padding: clamp(16px, 3vw, 28px);
+}
+
+.fund-detail-head,
+.detail-section-head,
+.detail-item-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.dialog-close {
+  min-height: 38px;
+  padding: 0 14px;
+  color: var(--blue);
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  cursor: pointer;
+  font-weight: 850;
+  white-space: nowrap;
+}
+
+.dialog-close:hover {
+  background: var(--blue-soft);
+}
+
+.fund-detail-columns {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+}
+
+.detail-section-head {
+  align-items: baseline;
+  margin-bottom: 10px;
+}
+
+.detail-item-list {
+  display: grid;
+  gap: 10px;
+}
+
+.detail-item {
+  padding: 14px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+
+.detail-item h4,
+.detail-item p {
+  margin-bottom: 0;
+}
+
+.detail-item-amount {
+  display: block;
+  margin: 10px 0 6px;
+  font-size: 1.1rem;
+}
+
+.detail-item-meta {
+  margin-bottom: 7px !important;
+  color: var(--green);
+  font-size: 0.76rem;
+  font-weight: 800;
+}
+
+.fund-detail-note {
+  margin-bottom: 0;
+  padding-top: 12px;
+  color: var(--muted);
+  border-top: 1px solid var(--line);
+  font-size: 0.8rem;
+  line-height: 1.5;
+}
+
 .check-card[data-priority="high"] {
   border-color: rgba(173, 92, 84, 0.28);
 }
@@ -584,6 +710,10 @@ tbody tr:last-child td {
   .project-list,
   .metric-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .fund-detail-columns {
+    grid-template-columns: 1fr;
   }
 }
 

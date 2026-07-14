@@ -61,6 +61,7 @@ const state = {
   updatedAt: null,
   updatedBy: "",
   activeFilter: "all",
+  activeFundId: null,
   unsubscribeDashboard: null,
 };
 
@@ -89,6 +90,15 @@ const elements = {
   allocationTable: document.getElementById("allocationTable"),
   lineItemTable: document.getElementById("lineItemTable"),
   checkList: document.getElementById("checkList"),
+  fundDetailDialog: document.getElementById("fundDetailDialog"),
+  fundDetailClose: document.getElementById("fundDetailClose"),
+  fundDetailCode: document.getElementById("fundDetailCode"),
+  fundDetailTitle: document.getElementById("fundDetailTitle"),
+  fundDetailMetrics: document.getElementById("fundDetailMetrics"),
+  usedItemsCount: document.getElementById("usedItemsCount"),
+  usedItemsList: document.getElementById("usedItemsList"),
+  plannedItemsCount: document.getElementById("plannedItemsCount"),
+  plannedItemsList: document.getElementById("plannedItemsList"),
 };
 
 setPersistence(auth, browserLocalPersistence).catch((error) => {
@@ -120,6 +130,13 @@ elements.logoutButton.addEventListener("click", async () => {
 });
 
 elements.seedButton.addEventListener("click", seedDashboardFromLocalFile);
+elements.fundDetailClose.addEventListener("click", closeFundDetail);
+elements.fundDetailDialog.addEventListener("click", (event) => {
+  if (event.target === elements.fundDetailDialog) closeFundDetail();
+});
+elements.fundDetailDialog.addEventListener("close", () => {
+  state.activeFundId = null;
+});
 
 elements.viewTabs.forEach((tab) => {
   tab.addEventListener("click", () => activateView(tab.dataset.view));
@@ -350,7 +367,7 @@ function formatUpdatedAt(value) {
 }
 
 function funds() {
-  return state.data.funds || [];
+  return (state.data.funds || []).filter((fund) => fund.archived !== true);
 }
 
 function allocations() {
@@ -392,24 +409,28 @@ function renderSummary() {
       value: formatYen(personal?.remainingYen),
       body: "教育研究費。学会費を先に引いてから購入候補を判断する。",
       tone: "green",
+      fundId: "personal2201",
     },
     {
       label: "2201 差引後目安",
       value: Number.isFinite(personal?.remainingYen) ? formatYen(personal.remainingYen - membershipReserve) : "未確認",
       body: `学会費 ${formatYen(membershipReserve)} を全て未払いと仮定した残り。`,
       tone: "blue",
+      fundId: "personal2201",
     },
     {
       label: "2202 プロジェクト枠",
       value: formatYen(project?.remainingYen),
       body: "Natto_MASHを含むプロジェクト研究費の財布。このメイン台帳で配分を決める。",
       tone: "gold",
+      fundId: "project2202",
     },
     {
       label: "武田財団",
       value: formatYen(takeda?.remainingYen),
       body: "奨学寄付金。記録済み明細と一部仮更新まで確認済み。",
       tone: "green",
+      fundId: "takeda7023",
     },
     {
       label: "Natto_MASH",
@@ -420,7 +441,7 @@ function renderSummary() {
     {
       label: "未確認の資金枠",
       value: `${unknownFunds}件`,
-      body: "科研費23K05586、科研費25H00958、AMED/橋渡しの扱いを確認する。",
+      body: "科研費25H00958、AMED/橋渡しの扱いを確認する。",
       tone: "red",
     },
   ];
@@ -429,9 +450,15 @@ function renderSummary() {
 }
 
 function renderSummaryCard(card) {
-  const article = document.createElement("article");
+  const article = document.createElement(card.fundId ? "button" : "article");
   article.className = "summary-card";
   article.dataset.tone = card.tone;
+  if (card.fundId) {
+    article.type = "button";
+    article.classList.add("is-clickable");
+    article.setAttribute("aria-label", `${card.label}の使用済み・使用予定項目を表示`);
+    article.addEventListener("click", () => openFundDetail(card.fundId));
+  }
 
   const label = document.createElement("span");
   label.className = "card-label";
@@ -496,9 +523,12 @@ function renderProjects() {
 
 function renderFunds() {
   elements.fundCards.replaceChildren(...funds().map((fund) => {
-    const card = document.createElement("article");
+    const card = document.createElement("button");
     card.className = "fund-card";
+    card.type = "button";
     card.dataset.status = fund.status;
+    card.setAttribute("aria-label", `${fund.name}の使用済み・使用予定項目を表示`);
+    card.addEventListener("click", () => openFundDetail(fund.id));
 
     const head = document.createElement("div");
     head.className = "fund-head";
@@ -529,11 +559,70 @@ function renderFunds() {
 
     const source = document.createElement("span");
     source.className = "mini-label";
-    source.textContent = fund.confidence;
+    source.textContent = `${fund.confidence} / 詳細を見る`;
 
     card.append(head, metrics, note, source);
     return card;
   }));
+}
+
+function openFundDetail(fundId) {
+  const fund = fundById(fundId);
+  if (!fund) return;
+
+  state.activeFundId = fundId;
+  const relatedItems = lineItems().filter((item) => item.fundId === fundId);
+  const usedItems = relatedItems.filter((item) => ["spent", "provisional"].includes(item.status));
+  const plannedItems = relatedItems.filter((item) => !["spent", "provisional"].includes(item.status));
+
+  elements.fundDetailCode.textContent = `${fund.code} / ${fund.category}`;
+  elements.fundDetailTitle.textContent = fund.name;
+  elements.fundDetailMetrics.replaceChildren(
+    renderMetric("総額", formatYen(fund.totalYen)),
+    renderMetric("本執行", formatYen(fund.executedYen)),
+    renderMetric("仮更新", formatYen(fund.provisionalYen)),
+    renderMetric("実質残額", formatYen(fund.remainingYen)),
+  );
+  elements.usedItemsCount.textContent = `${usedItems.length}件`;
+  elements.plannedItemsCount.textContent = `${plannedItems.length}件`;
+  elements.usedItemsList.replaceChildren(...renderFundDetailItems(usedItems, "使用済み項目はまだありません。"));
+  elements.plannedItemsList.replaceChildren(...renderFundDetailItems(plannedItems, "使用予定の項目はまだありません。"));
+
+  if (!elements.fundDetailDialog.open) elements.fundDetailDialog.showModal();
+}
+
+function closeFundDetail() {
+  if (elements.fundDetailDialog.open) elements.fundDetailDialog.close();
+}
+
+function renderFundDetailItems(items, emptyMessage) {
+  if (!items.length) return [renderEmptyState(emptyMessage)];
+  return items.map((item) => {
+    const article = document.createElement("article");
+    article.className = "detail-item";
+
+    const head = document.createElement("div");
+    head.className = "detail-item-head";
+    const title = document.createElement("h4");
+    title.textContent = item.title;
+    head.append(title, statusBadge(statusLabels[item.status] || item.status, item.status));
+
+    const amount = document.createElement("strong");
+    amount.className = "detail-item-amount";
+    amount.textContent = formatYen(item.amountYen);
+
+    const meta = document.createElement("p");
+    meta.className = "detail-item-meta";
+    const allocation = allocationById(item.allocationId)?.title;
+    meta.textContent = [item.project, allocation, item.date].filter(Boolean).join(" / ");
+
+    const next = document.createElement("p");
+    next.className = "muted";
+    next.textContent = item.next;
+
+    article.append(head, amount, meta, next);
+    return article;
+  });
 }
 
 function renderMetric(name, value) {

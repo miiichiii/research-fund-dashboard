@@ -137,6 +137,36 @@
     </section>
   </main>
 
+  <dialog id="fundDetailDialog" class="fund-detail-dialog" aria-labelledby="fundDetailTitle">
+    <div class="fund-detail-shell">
+      <header class="fund-detail-head">
+        <div>
+          <p id="fundDetailCode" class="kicker"></p>
+          <h2 id="fundDetailTitle">研究費の詳細</h2>
+        </div>
+        <button id="fundDetailClose" class="dialog-close" type="button" aria-label="詳細を閉じる">閉じる</button>
+      </header>
+      <div id="fundDetailMetrics" class="metric-grid fund-detail-metrics"></div>
+      <div class="fund-detail-columns">
+        <section aria-labelledby="usedItemsTitle">
+          <div class="detail-section-head">
+            <h3 id="usedItemsTitle">使用済み項目</h3>
+            <span id="usedItemsCount" class="mini-label"></span>
+          </div>
+          <div id="usedItemsList" class="detail-item-list"></div>
+        </section>
+        <section aria-labelledby="plannedItemsTitle">
+          <div class="detail-section-head">
+            <h3 id="plannedItemsTitle">使用予定の項目</h3>
+            <span id="plannedItemsCount" class="mini-label"></span>
+          </div>
+          <div id="plannedItemsList" class="detail-item-list"></div>
+        </section>
+      </div>
+      <p class="fund-detail-note">この研究費に紐づく項目だけを表示しています。Natto_MASHはプロジェクト区分として表示し、別の財布として加算しません。</p>
+    </div>
+  </dialog>
+
   <script type="module" src="./app.js"></script>
 </body>
 </html>
