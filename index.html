@@ -4,14 +4,14 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="robots" content="noindex,nofollow,noarchive,noimageindex,nosnippet">
-  <title>研究費横断ボード</title>
+  <title>研究費メインボード</title>
   <link rel="stylesheet" href="./styles.css">
 </head>
 <body>
   <header class="topbar">
     <div class="title-block">
       <p class="kicker">Research funds</p>
-      <h1>研究費横断ボード</h1>
+      <h1>研究費メインボード</h1>
     </div>
     <div class="status-stack" aria-label="status">
       <span id="syncStatus" class="status-chip" data-status="locked">ログイン待ち</span>
@@ -27,14 +27,13 @@
   <main>
     <section class="intro-band" aria-label="運用方針">
       <div>
-        <p class="kicker">Role split</p>
-        <h2>全体の財布はここ、Natto_MASHはプロジェクト別ビューで扱う</h2>
+        <p class="kicker">Single ledger</p>
+        <h2>全体研究費もNatto_MASHも、このメインボードで管理する</h2>
       </div>
       <p>
         2201教育研究費、2202プロジェクト研究費、7023武田財団、科研費、AMED/橋渡しを横断で見ます。
-        Natto_MASH管理ボードは残し、関連する支出だけをこの親ボードから参照します。
+        Natto_MASHは別ボードに分けず、この台帳のプロジェクト区分として支出候補・未確認事項までまとめます。
       </p>
-      <a class="button ghost" href="https://miiichiii.github.io/natto-mash-project-todo/" target="_blank" rel="noopener">Natto_MASHボード</a>
     </section>
 
     <section id="authGate" class="panel auth-gate" aria-live="polite">
@@ -81,7 +80,7 @@
           <div class="panel-head">
             <div>
               <p class="kicker">Projects</p>
-              <h3>プロジェクト別ビュー</h3>
+              <h3>管理対象</h3>
             </div>
           </div>
           <div id="projectList" class="project-list"></div>

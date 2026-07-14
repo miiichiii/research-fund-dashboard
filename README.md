@@ -1,14 +1,14 @@
-# 研究費横断ボード
+# 研究費メインボード
 
-研究費横断管理の親ボードです。Googleログイン後、許可ユーザーだけがFirestore上の研究費台帳を読める構成にしています。
+研究費管理のメイン台帳です。Googleログイン後、許可ユーザーだけがFirestore上の研究費台帳を読める構成にしています。
 
 ## Purpose
 
-既存の Natto_MASH 管理ボードを壊さず、同じ考え方（Funds / Allocations / Line items / Open loops）を研究費全体へ広げるための親ボード。
+Natto_MASHを別ボードへ分けず、Funds / Allocations / Line items / Open loops をこのメイン台帳で一元管理する。
 
-- 親ボード: 2201教育研究費、2202プロジェクト研究費、7023武田財団、科研費、AMED/橋渡しを横断で見る
-- 子ビュー: Natto_MASH 関連の配分枠・支出項目だけを絞り込む
-- 既存 Natto_MASH ボード: https://miiichiii.github.io/natto-mash-project-todo/ を継続利用
+- 資金枠: 2201教育研究費、2202プロジェクト研究費、7023武田財団、科研費、AMED/橋渡しを横断で見る
+- プロジェクト: Natto_MASHなどの配分枠・支出項目・未確認事項も同じ台帳で管理する
+- 既存 Natto_MASH ボードは過去参照用。正本はこの研究費メインボードに寄せる。
 
 ## Files
 

@@ -402,7 +402,7 @@ function renderSummary() {
     {
       label: "2202 プロジェクト枠",
       value: formatYen(project?.remainingYen),
-      body: "プロジェクト研究費の財布。Natto_MASH候補と合算せず、この残額内で配分を決める。",
+      body: "Natto_MASHを含むプロジェクト研究費の財布。このメイン台帳で配分を決める。",
       tone: "gold",
     },
     {
@@ -412,9 +412,9 @@ function renderSummary() {
       tone: "green",
     },
     {
-      label: "Natto_MASH 子ビュー",
-      value: "別集計",
-      body: "Natto関連は子ビューで絞り込む。親ボードでは財布残額と二重計上しない。",
+      label: "Natto_MASH",
+      value: "メイン管理",
+      body: "別ボードに分けず、この台帳内のプロジェクト区分として管理する。",
       tone: "pink",
     },
     {
@@ -454,7 +454,7 @@ function renderPriority() {
   const fallback = [
     "学会費3件の支払い済み/未払いと、2201から払えるかを確認する。",
     "2201の支出期限を確認して、個人枠で今買うものを決める。",
-    "2202のメンバー/使途制限を確認して、Natto_MASH関連へ配分する。",
+    "2202のメンバー/使途制限を確認して、メイン台帳上でNatto_MASH関連へ配分する。",
   ];
   const steps = highPriorityChecks.length ? highPriorityChecks : fallback;
 
@@ -487,7 +487,7 @@ function renderProjects() {
       link.target = "_blank";
       link.rel = "noopener";
       link.className = "inline-link";
-      link.textContent = "既存ボードを開く";
+      link.textContent = "参考リンクを開く";
       card.append(link);
     }
     return card;
