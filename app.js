@@ -384,9 +384,6 @@ function renderSummary() {
   const membershipReserve = lineItems()
     .filter((item) => item.status === "fixed")
     .reduce((sum, item) => sum + (item.amountYen || 0), 0);
-  const nattoPlanned = allocations()
-    .filter((allocation) => allocation.project === "Natto_MASH" && Number.isFinite(allocation.plannedYen))
-    .reduce((sum, allocation) => sum + allocation.plannedYen, 0);
   const unknownFunds = funds().filter((fund) => ["unknown", "rough"].includes(fund.status)).length;
 
   const cards = [
@@ -405,7 +402,7 @@ function renderSummary() {
     {
       label: "2202 プロジェクト枠",
       value: formatYen(project?.remainingYen),
-      body: "プロジェクト研究費。2201とは別計算。使途制限とメンバー確認が先。",
+      body: "プロジェクト研究費の財布。Natto_MASH候補と合算せず、この残額内で配分を決める。",
       tone: "gold",
     },
     {
@@ -415,9 +412,9 @@ function renderSummary() {
       tone: "green",
     },
     {
-      label: "Natto_MASH 仮配分",
-      value: formatYen(nattoPlanned),
-      body: "Natto関連の配分候補。確認済み残額の合算ではなく、計画側の見通し。",
+      label: "Natto_MASH 子ビュー",
+      value: "別集計",
+      body: "Natto関連は子ビューで絞り込む。親ボードでは財布残額と二重計上しない。",
       tone: "pink",
     },
     {
