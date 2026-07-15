@@ -45,6 +45,20 @@ const emptyDashboard = {
   ipuOrders: [],
 };
 
+const ipuFormFields = [
+  { label: "メーカー名", getValue: (order) => order.manufacturer },
+  { label: "品名", getValue: (order) => order.itemName },
+  { label: "規格・品質", getValue: (order) => order.specification },
+  { label: "型番・品番", getValue: (order) => order.catalogNumber },
+  { label: "数量", getValue: (order) => order.quantity },
+  { label: "単位", getValue: (order) => order.unit },
+  { label: "単価（円）", getValue: (order) => formatOptionalInputNumber(order.unitPriceYen) },
+  { label: "金額（円）", getValue: (order) => formatOptionalInputNumber(order.totalYen) },
+  { label: "主たる使用者", getValue: (order) => order.primaryUser },
+  { label: "専用共用別", getValue: (order) => order.sharedUsage },
+  { label: "備考", getValue: (order) => order.remarks || order.note },
+];
+
 const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
 const db = getFirestore(app);
@@ -403,7 +417,7 @@ function renderIpuOrders() {
     return;
   }
 
-  elements.ipuOrderList.replaceChildren(...orders.map((order) => {
+  const renderedOrders = orders.map((order) => {
     const card = document.createElement("article");
     card.className = "ipu-order-card";
 
@@ -418,23 +432,17 @@ function renderIpuOrders() {
     titleWrap.append(id, title);
     head.append(titleWrap, statusBadge(order.statusLabel || "申請準備", order.status || "check"));
 
+    const quickCopy = renderCopyField(
+      "申請画面へそのまま貼り付け",
+      buildIpuFormCopyText(order),
+      { buttonText: "11項目コピー", className: "copy-field--bundle" },
+    );
+
     const formFields = document.createElement("div");
     formFields.className = "form-copy-list";
-    [
-      ["メーカー名", order.manufacturer],
-      ["品名", order.itemName],
-      ["規格・品質", order.specification],
-      ["型番・品番", order.catalogNumber],
-      ["数量", order.quantity],
-      ["単位", order.unit],
-      ["単価（円）", formatOptionalInputNumber(order.unitPriceYen)],
-      ["金額（円）", formatOptionalInputNumber(order.totalYen)],
-      ["主たる使用者", order.primaryUser],
-      ["専用共用別", order.sharedUsage],
-      ["備考", order.remarks || order.note],
-    ].forEach(([label, value]) => formFields.append(renderFormCopyField(label, value)));
+    getIpuFormEntries(order).forEach(([label, value]) => formFields.append(renderFormCopyField(label, value)));
 
-    card.append(head, formFields);
+    card.append(head, quickCopy, formFields);
 
     const referenceFields = [
       ["業者名", order.vendor],
@@ -462,17 +470,48 @@ function renderIpuOrders() {
       card.append(note);
     }
     return card;
-  }));
+  });
+
+  if (orders.length > 1) {
+    elements.ipuOrderList.replaceChildren(renderIpuBulkCopyPanel(orders), ...renderedOrders);
+    return;
+  }
+
+  elements.ipuOrderList.replaceChildren(...renderedOrders);
 }
 
 function formatOptionalInputNumber(value) {
-  return Number.isFinite(value)
-    ? new Intl.NumberFormat("ja-JP", { maximumFractionDigits: 0 }).format(value)
-    : "";
+  if (typeof value === "number" && Number.isFinite(value)) {
+    return String(Math.trunc(value));
+  }
+  if (typeof value === "string") {
+    const normalized = value
+      .trim()
+      .replace(/[０-９]/g, (digit) => String.fromCharCode(digit.charCodeAt(0) - 0xfee0))
+      .replace(/,/g, "");
+    return /^\d+$/.test(normalized) ? normalized : "";
+  }
+  return "";
 }
 
 function hasCopyValue(value) {
   return value === 0 || (typeof value === "string" ? value.trim() : Boolean(value));
+}
+
+function getIpuFormEntries(order) {
+  return ipuFormFields.map((field) => [field.label, field.getValue(order)]);
+}
+
+function buildIpuFormCopyText(order) {
+  return getIpuFormEntries(order)
+    .map(([, value]) => formatCopyValue(value))
+    .join("\n");
+}
+
+function buildIpuBulkCopyText(orders) {
+  return orders
+    .map((order) => getIpuFormEntries(order).map(([, value]) => formatCopyValue(value)).join("\t"))
+    .join("\n");
 }
 
 function formatCopyValue(rawValue) {
@@ -497,30 +536,19 @@ function renderFormCopyField(label, rawValue) {
   const button = document.createElement("button");
   button.className = "copy-button";
   button.type = "button";
-  button.textContent = "コピー";
-  button.disabled = value === "要確認";
-  button.addEventListener("click", async () => {
-    try {
-      await navigator.clipboard.writeText(value);
-      button.textContent = "コピー済み";
-      window.setTimeout(() => { button.textContent = "コピー"; }, 1400);
-    } catch {
-      button.textContent = "選択してコピー";
-      const selection = window.getSelection();
-      const range = document.createRange();
-      range.selectNodeContents(output);
-      selection.removeAllRanges();
-      selection.addRange(range);
-    }
-  });
+  attachCopyBehavior(button, value, { defaultText: "コピー", selectionTarget: output });
   row.append(name, output, button);
   return row;
 }
 
-function renderCopyField(label, rawValue) {
+function renderCopyField(label, rawValue, options = {}) {
+  const { buttonText = "コピー", className = "" } = options;
   const value = formatCopyValue(rawValue);
   const field = document.createElement("div");
   field.className = "copy-field";
+  if (className) {
+    field.classList.add(className);
+  }
   const fieldHead = document.createElement("div");
   fieldHead.className = "copy-field-head";
   const name = document.createElement("span");
@@ -529,27 +557,77 @@ function renderCopyField(label, rawValue) {
   const button = document.createElement("button");
   button.className = "copy-button";
   button.type = "button";
-  button.textContent = "コピー";
-  button.disabled = value === "要確認";
   const output = document.createElement("pre");
   output.textContent = value;
+  attachCopyBehavior(button, value, { defaultText: buttonText, selectionTarget: output });
+  fieldHead.append(name, button);
+  field.append(fieldHead, output);
+  return field;
+}
+
+function renderIpuBulkCopyPanel(orders) {
+  const panel = document.createElement("section");
+  panel.className = "ipu-bulk-copy";
+
+  const head = document.createElement("div");
+  head.className = "ipu-bulk-copy-head";
+
+  const textWrap = document.createElement("div");
+  const kicker = document.createElement("p");
+  kicker.className = "kicker";
+  kicker.textContent = "Quick paste";
+  const title = document.createElement("h3");
+  title.textContent = `${orders.length}件をまとめて貼り付け`;
+  textWrap.append(kicker, title);
+
+  const button = document.createElement("button");
+  button.className = "copy-button";
+  button.type = "button";
+  attachCopyBehavior(button, buildIpuBulkCopyText(orders), { defaultText: `${orders.length}件コピー` });
+  head.append(textWrap, button);
+
+  const note = document.createElement("p");
+  note.className = "ipu-bulk-copy-note";
+  note.textContent = "1行が1件、列は申請画面と同じ順です。左上セルから貼り付けると、複数件をまとめて入れられます。";
+
+  panel.append(head, note);
+  return panel;
+}
+
+function attachCopyBehavior(button, value, options = {}) {
+  const { defaultText = "コピー", selectionTarget = null } = options;
+  button.textContent = defaultText;
+  button.disabled = value === "要確認";
   button.addEventListener("click", async () => {
     try {
       await navigator.clipboard.writeText(value);
       button.textContent = "コピー済み";
-      window.setTimeout(() => { button.textContent = "コピー"; }, 1400);
+      window.setTimeout(() => { button.textContent = defaultText; }, 1400);
     } catch {
-      button.textContent = "選択してコピー";
-      const selection = window.getSelection();
-      const range = document.createRange();
-      range.selectNodeContents(output);
-      selection.removeAllRanges();
-      selection.addRange(range);
+      if (selectionTarget) {
+        button.textContent = "選択してコピー";
+        const selection = window.getSelection();
+        const range = document.createRange();
+        range.selectNodeContents(selectionTarget);
+        selection.removeAllRanges();
+        selection.addRange(range);
+        return;
+      }
+      const fallback = document.createElement("textarea");
+      fallback.value = value;
+      fallback.setAttribute("readonly", "");
+      fallback.style.position = "fixed";
+      fallback.style.opacity = "0";
+      document.body.append(fallback);
+      fallback.select();
+      const copied = document.execCommand("copy");
+      fallback.remove();
+      button.textContent = copied ? "コピー済み" : "コピー失敗";
+      if (copied) {
+        window.setTimeout(() => { button.textContent = defaultText; }, 1400);
+      }
     }
   });
-  fieldHead.append(name, button);
-  field.append(fieldHead, output);
-  return field;
 }
 
 function fundById(id) {
