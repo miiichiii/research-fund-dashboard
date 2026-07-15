@@ -45,18 +45,12 @@ const emptyDashboard = {
   ipuOrders: [],
 };
 
-const ipuFormFields = [
-  { label: "メーカー名", getValue: (order) => order.manufacturer },
-  { label: "品名", getValue: (order) => order.itemName },
-  { label: "規格・品質", getValue: (order) => order.specification },
-  { label: "型番・品番", getValue: (order) => order.catalogNumber },
-  { label: "数量", getValue: (order) => order.quantity },
-  { label: "単位", getValue: (order) => order.unit },
-  { label: "単価（円）", getValue: (order) => formatOptionalInputNumber(order.unitPriceYen) },
-  { label: "金額（円）", getValue: (order) => formatOptionalInputNumber(order.totalYen) },
-  { label: "主たる使用者", getValue: (order) => order.primaryUser },
-  { label: "専用共用別", getValue: (order) => order.sharedUsage },
-  { label: "備考", getValue: (order) => order.remarks || order.note },
+const ipuPasteFields = [
+  { label: "品名", getValue: (order, candidate) => buildProductNameValue(order, candidate) },
+  { label: "規格・品質", getValue: (order, candidate) => getCandidateCapacity(order, candidate) },
+  { label: "型番・品番", getValue: (order, candidate) => getCandidateCatalogNumber(order, candidate) },
+  { label: "単価（円）", getValue: (order, candidate) => getCandidateUnitPrice(order, candidate) },
+  { label: "備考", getValue: (order, candidate) => buildQuoteRemark(order, candidate) },
 ];
 
 const app = initializeApp(firebaseConfig);
@@ -417,7 +411,12 @@ function renderIpuOrders() {
     return;
   }
 
-  const renderedOrders = orders.map((order) => {
+  const ordersWithCandidates = orders.map((order) => ({
+    order,
+    candidates: getQuoteCandidates(order),
+  }));
+
+  const renderedOrders = ordersWithCandidates.map(({ order, candidates }) => {
     const card = document.createElement("article");
     card.className = "ipu-order-card";
 
@@ -428,42 +427,20 @@ function renderIpuOrders() {
     id.className = "kicker";
     id.textContent = order.purchaseId || "IPU購入候補";
     const title = document.createElement("h3");
-    title.textContent = order.label || order.itemName || "品名未確認";
+    title.textContent = order.label || candidates[0].itemName || order.itemName || "品名未確認";
     titleWrap.append(id, title);
     head.append(titleWrap, statusBadge(order.statusLabel || "申請準備", order.status || "check"));
 
-    const quickCopy = renderCopyField(
-      "申請画面へそのまま貼り付け",
-      buildIpuFormCopyText(order),
-      { buttonText: "11項目コピー", className: "copy-field--bundle" },
-    );
+    const pasteBlocks = document.createElement("div");
+    pasteBlocks.className = "ipu-paste-blocks";
+    candidates.forEach((candidate, index) => {
+      pasteBlocks.append(renderIpuPasteBlock(order, candidate, index, candidates.length));
+    });
 
-    const formFields = document.createElement("div");
-    formFields.className = "form-copy-list";
-    getIpuFormEntries(order).forEach(([label, value]) => formFields.append(renderFormCopyField(label, value)));
+    card.append(head, pasteBlocks);
 
-    card.append(head, quickCopy, formFields);
-
-    const referenceFields = [
-      ["業者名", order.vendor],
-      ["見積番号", order.quoteNumber],
-      ["見積有効期限", order.quoteValidUntil],
-    ].filter(([, value]) => hasCopyValue(value));
-
-    if (referenceFields.length) {
-      const referenceSection = document.createElement("section");
-      referenceSection.className = "ipu-reference-section";
-      const referenceLabel = document.createElement("p");
-      referenceLabel.className = "mini-label";
-      referenceLabel.textContent = "確認用";
-      const referenceGrid = document.createElement("div");
-      referenceGrid.className = "copy-field-grid copy-field-grid--meta";
-      referenceFields.forEach(([label, value]) => referenceGrid.append(renderCopyField(label, value)));
-      referenceSection.append(referenceLabel, referenceGrid);
-      card.append(referenceSection);
-    }
-
-    if (order.note && order.remarks && order.note !== order.remarks) {
+    const defaultRemark = buildQuoteRemark(order, candidates[0]);
+    if (order.note && normalizeText(order.note) !== normalizeText(defaultRemark)) {
       const note = document.createElement("p");
       note.className = "ipu-order-note";
       note.textContent = order.note;
@@ -473,7 +450,7 @@ function renderIpuOrders() {
   });
 
   if (orders.length > 1) {
-    elements.ipuOrderList.replaceChildren(renderIpuBulkCopyPanel(orders), ...renderedOrders);
+    elements.ipuOrderList.replaceChildren(renderIpuBulkCopyPanel(ordersWithCandidates), ...renderedOrders);
     return;
   }
 
@@ -498,19 +475,126 @@ function hasCopyValue(value) {
   return value === 0 || (typeof value === "string" ? value.trim() : Boolean(value));
 }
 
-function getIpuFormEntries(order) {
-  return ipuFormFields.map((field) => [field.label, field.getValue(order)]);
+function pickCopyValue(...values) {
+  for (const value of values) {
+    if (value === 0) return 0;
+    if (typeof value === "string") {
+      const trimmed = value.trim();
+      if (trimmed) return trimmed;
+      continue;
+    }
+    if (value !== undefined && value !== null && value !== "") return value;
+  }
+  return "";
 }
 
-function buildIpuFormCopyText(order) {
-  return getIpuFormEntries(order)
+function normalizeText(value) {
+  if (typeof value === "string") return value.trim();
+  if (value === 0) return "0";
+  return value ? String(value).trim() : "";
+}
+
+function joinCopyParts(parts, delimiter = " / ") {
+  const unique = parts
+    .map((part) => normalizeText(part))
+    .filter((part, index, list) => part && list.indexOf(part) === index);
+  return unique.join(delimiter);
+}
+
+function getQuoteCandidates(order) {
+  const rawCandidates = Array.isArray(order.quoteCandidates) && order.quoteCandidates.length
+    ? order.quoteCandidates
+    : Array.isArray(order.unitPriceCandidates) && order.unitPriceCandidates.length
+      ? order.unitPriceCandidates
+      : Array.isArray(order.priceCandidates) && order.priceCandidates.length
+        ? order.priceCandidates
+        : [order];
+  return rawCandidates.map((candidate, index) => normalizeQuoteCandidate(order, candidate, index));
+}
+
+function normalizeQuoteCandidate(order, rawCandidate, index) {
+  const candidate = rawCandidate && typeof rawCandidate === "object" && !Array.isArray(rawCandidate)
+    ? rawCandidate
+    : { unitPriceYen: rawCandidate };
+  return {
+    key: pickCopyValue(candidate.id, candidate.quoteNumber, candidate.companyName, index + 1),
+    companyName: pickCopyValue(
+      candidate.companyName,
+      candidate.vendor,
+      candidate.vendorName,
+      candidate.supplier,
+      order.companyName,
+      order.vendor,
+      order.vendorName,
+      order.supplier,
+      order.manufacturer,
+    ),
+    itemName: pickCopyValue(candidate.itemName, candidate.name, order.itemName, order.name, order.label),
+    capacity: pickCopyValue(
+      candidate.capacity,
+      candidate.size,
+      candidate.volume,
+      candidate.specification,
+      order.capacity,
+      order.size,
+      order.volume,
+      order.specification,
+    ),
+    catalogNumber: pickCopyValue(
+      candidate.catalogNumber,
+      candidate.modelNumber,
+      candidate.partNumber,
+      order.catalogNumber,
+      order.modelNumber,
+      order.partNumber,
+    ),
+    unitPriceYen: pickCopyValue(
+      candidate.unitPriceYen,
+      candidate.unitPrice,
+      candidate.priceYen,
+      candidate.amountYen,
+      order.unitPriceYen,
+    ),
+    quoteNumber: pickCopyValue(candidate.quoteNumber, candidate.quoteId, order.quoteNumber),
+    quoteValidUntil: pickCopyValue(candidate.quoteValidUntil, candidate.validUntil, order.quoteValidUntil),
+    note: pickCopyValue(candidate.note, candidate.remarks, order.note, order.remarks),
+  };
+}
+
+function buildProductNameValue(order, candidate) {
+  return joinCopyParts([candidate.itemName, candidate.companyName]);
+}
+
+function getCandidateCapacity(order, candidate) {
+  return pickCopyValue(candidate.capacity, order.capacity, order.specification);
+}
+
+function getCandidateCatalogNumber(order, candidate) {
+  return pickCopyValue(candidate.catalogNumber, order.catalogNumber);
+}
+
+function getCandidateUnitPrice(order, candidate) {
+  return formatOptionalInputNumber(pickCopyValue(candidate.unitPriceYen, order.unitPriceYen));
+}
+
+function buildQuoteRemark(order, candidate) {
+  if (candidate.companyName) return `${candidate.companyName}で見積もり`;
+  return pickCopyValue(candidate.note, order.remarks, order.note);
+}
+
+function getIpuFormEntries(order, candidate) {
+  return ipuPasteFields.map((field) => [field.label, field.getValue(order, candidate)]);
+}
+
+function buildIpuFormCopyText(order, candidate) {
+  return getIpuFormEntries(order, candidate)
     .map(([, value]) => formatCopyValue(value))
     .join("\n");
 }
 
-function buildIpuBulkCopyText(orders) {
-  return orders
-    .map((order) => getIpuFormEntries(order).map(([, value]) => formatCopyValue(value)).join("\t"))
+function buildIpuBulkCopyText(ordersWithCandidates) {
+  return ordersWithCandidates
+    .map(({ order, candidates }) => getIpuFormEntries(order, candidates[0]).map(([, value]) => formatCopyValue(value)).join("\t"))
     .join("\n");
 }
 
@@ -565,7 +649,63 @@ function renderCopyField(label, rawValue, options = {}) {
   return field;
 }
 
-function renderIpuBulkCopyPanel(orders) {
+function renderIpuPasteBlock(order, candidate, index, total) {
+  const block = document.createElement("section");
+  block.className = "ipu-paste-block";
+
+  if (total > 1) {
+    const head = document.createElement("div");
+    head.className = "ipu-paste-block-head";
+    const title = document.createElement("h4");
+    title.textContent = candidate.companyName || `候補${index + 1}`;
+    const unitPrice = getCandidateUnitPrice(order, candidate);
+    const meta = document.createElement("p");
+    meta.className = "ipu-paste-block-meta";
+    meta.textContent = [
+      unitPrice ? `単価 ${unitPrice}` : "",
+      candidate.quoteNumber,
+    ].filter(Boolean).join(" / ");
+    head.append(title);
+    if (meta.textContent) {
+      head.append(meta);
+    }
+    block.append(head);
+  }
+
+  const quickCopy = renderCopyField(
+    "ここへそのまま貼り付け",
+    buildIpuFormCopyText(order, candidate),
+    { buttonText: "5項目コピー", className: "copy-field--bundle" },
+  );
+
+  const formFields = document.createElement("div");
+  formFields.className = "form-copy-list";
+  getIpuFormEntries(order, candidate).forEach(([label, value]) => formFields.append(renderFormCopyField(label, value)));
+  block.append(quickCopy, formFields);
+
+  const referenceFields = [
+    ["会社名", candidate.companyName],
+    ["見積番号", candidate.quoteNumber],
+    ["見積有効期限", candidate.quoteValidUntil],
+  ].filter(([, value]) => hasCopyValue(value));
+
+  if (referenceFields.length) {
+    const referenceSection = document.createElement("section");
+    referenceSection.className = "ipu-reference-section";
+    const referenceLabel = document.createElement("p");
+    referenceLabel.className = "mini-label";
+    referenceLabel.textContent = "確認用";
+    const referenceGrid = document.createElement("div");
+    referenceGrid.className = "copy-field-grid copy-field-grid--meta";
+    referenceFields.forEach(([label, value]) => referenceGrid.append(renderCopyField(label, value)));
+    referenceSection.append(referenceLabel, referenceGrid);
+    block.append(referenceSection);
+  }
+
+  return block;
+}
+
+function renderIpuBulkCopyPanel(ordersWithCandidates) {
   const panel = document.createElement("section");
   panel.className = "ipu-bulk-copy";
 
@@ -577,18 +717,21 @@ function renderIpuBulkCopyPanel(orders) {
   kicker.className = "kicker";
   kicker.textContent = "Quick paste";
   const title = document.createElement("h3");
-  title.textContent = `${orders.length}件をまとめて貼り付け`;
+  title.textContent = `${ordersWithCandidates.length}件をまとめて貼り付け`;
   textWrap.append(kicker, title);
 
   const button = document.createElement("button");
   button.className = "copy-button";
   button.type = "button";
-  attachCopyBehavior(button, buildIpuBulkCopyText(orders), { defaultText: `${orders.length}件コピー` });
+  attachCopyBehavior(button, buildIpuBulkCopyText(ordersWithCandidates), { defaultText: `${ordersWithCandidates.length}件コピー` });
   head.append(textWrap, button);
 
   const note = document.createElement("p");
   note.className = "ipu-bulk-copy-note";
-  note.textContent = "1行が1件、列は申請画面と同じ順です。左上セルから貼り付けると、複数件をまとめて入れられます。";
+  const hasMultipleCandidates = ordersWithCandidates.some(({ candidates }) => candidates.length > 1);
+  note.textContent = hasMultipleCandidates
+    ? "1行が1件、列は 品名 → 規格・品質 → 型番・品番 → 単価 → 備考 です。左上セルから貼り付けられます。候補が複数ある品目は、まとめコピーでは先頭候補を使います。"
+    : "1行が1件、列は 品名 → 規格・品質 → 型番・品番 → 単価 → 備考 です。左上セルから貼り付けると、複数件をまとめて入れられます。";
 
   panel.append(head, note);
   return panel;
