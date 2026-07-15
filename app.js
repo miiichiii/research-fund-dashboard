@@ -618,17 +618,17 @@ function renderFormCopyField(label, rawValue) {
   const value = formatCopyValue(rawValue);
   const row = document.createElement("div");
   row.className = "form-copy-row";
+  const button = document.createElement("button");
+  button.className = "copy-button";
+  button.type = "button";
   const name = document.createElement("span");
   name.className = "form-copy-label";
   name.textContent = label;
   const output = document.createElement("pre");
   output.className = "form-copy-value";
   output.textContent = value;
-  const button = document.createElement("button");
-  button.className = "copy-button";
-  button.type = "button";
   attachCopyBehavior(button, value, { defaultText: "コピー", selectionTarget: output });
-  row.append(name, output, button);
+  row.append(button, name, output);
   return row;
 }
 
@@ -642,16 +642,16 @@ function renderCopyField(label, rawValue, options = {}) {
   }
   const fieldHead = document.createElement("div");
   fieldHead.className = "copy-field-head";
-  const name = document.createElement("span");
-  name.className = "copy-field-label";
-  name.textContent = label;
   const button = document.createElement("button");
   button.className = "copy-button";
   button.type = "button";
+  const name = document.createElement("span");
+  name.className = "copy-field-label";
+  name.textContent = label;
   const output = document.createElement("pre");
   output.textContent = value;
   attachCopyBehavior(button, value, { defaultText: buttonText, selectionTarget: output });
-  fieldHead.append(name, button);
+  fieldHead.append(button, name);
   field.append(fieldHead, output);
   return field;
 }
@@ -726,7 +726,7 @@ function renderIpuBulkCopyPanel(ordersWithCandidates) {
   button.className = "copy-button";
   button.type = "button";
   attachCopyBehavior(button, buildIpuBulkCopyText(ordersWithCandidates), { defaultText: `${ordersWithCandidates.length}件コピー` });
-  head.append(textWrap, button);
+  head.append(button, textWrap);
 
   const note = document.createElement("p");
   note.className = "ipu-bulk-copy-note";

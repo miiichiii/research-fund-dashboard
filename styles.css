@@ -723,14 +723,21 @@ tbody tr:last-child td {
 .copy-field-head {
   display: flex;
   align-items: flex-start;
-  justify-content: space-between;
   gap: 12px;
+}
+
+.ipu-order-head {
+  justify-content: space-between;
+}
+
+.copy-field-head,
+.ipu-bulk-copy-head {
+  justify-content: flex-start;
 }
 
 .ipu-bulk-copy-head {
   display: flex;
   align-items: flex-start;
-  justify-content: space-between;
   gap: 12px;
 }
 
@@ -788,7 +795,7 @@ tbody tr:last-child td {
 
 .form-copy-row {
   display: grid;
-  grid-template-columns: 120px minmax(0, 1fr) auto;
+  grid-template-columns: auto 120px minmax(0, 1fr);
   gap: 12px;
   align-items: start;
   padding: 11px 12px;
