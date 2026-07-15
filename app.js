@@ -661,10 +661,7 @@ function renderIpuPasteBlock(order, candidate, index, total) {
     const unitPrice = getCandidateUnitPrice(order, candidate);
     const meta = document.createElement("p");
     meta.className = "ipu-paste-block-meta";
-    meta.textContent = [
-      unitPrice ? `単価 ${unitPrice}` : "",
-      candidate.quoteNumber,
-    ].filter(Boolean).join(" / ");
+    meta.textContent = unitPrice ? `単価 ${unitPrice}` : "";
     head.append(title);
     if (meta.textContent) {
       head.append(meta);
@@ -685,8 +682,6 @@ function renderIpuPasteBlock(order, candidate, index, total) {
 
   const referenceFields = [
     ["会社名", candidate.companyName],
-    ["見積番号", candidate.quoteNumber],
-    ["見積有効期限", candidate.quoteValidUntil],
   ].filter(([, value]) => hasCopyValue(value));
 
   if (referenceFields.length) {
