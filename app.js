@@ -527,7 +527,14 @@ function normalizeQuoteCandidate(order, rawCandidate, index) {
       order.vendor,
       order.vendorName,
       order.supplier,
+    ),
+    manufacturerName: pickCopyValue(
+      candidate.manufacturer,
+      candidate.brand,
+      candidate.maker,
       order.manufacturer,
+      order.brand,
+      order.maker,
     ),
     itemName: pickCopyValue(candidate.itemName, candidate.name, order.itemName, order.name, order.label),
     capacity: pickCopyValue(
@@ -562,7 +569,7 @@ function normalizeQuoteCandidate(order, rawCandidate, index) {
 }
 
 function buildProductNameValue(order, candidate) {
-  return joinCopyParts([candidate.itemName, candidate.companyName]);
+  return joinCopyParts([candidate.itemName, candidate.manufacturerName]);
 }
 
 function getCandidateCapacity(order, candidate) {
