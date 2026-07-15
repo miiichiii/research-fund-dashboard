@@ -719,11 +719,52 @@ tbody tr:last-child td {
   gap: 12px;
 }
 
+.form-copy-list {
+  display: grid;
+  margin-top: 12px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  overflow: hidden;
+}
+
+.form-copy-row {
+  display: grid;
+  grid-template-columns: 120px minmax(0, 1fr) auto;
+  gap: 12px;
+  align-items: start;
+  padding: 11px 12px;
+  border-top: 1px solid var(--line);
+}
+
+.form-copy-row:first-child {
+  border-top: none;
+}
+
+.form-copy-label {
+  padding-top: 5px;
+  color: var(--green);
+  font-size: 0.78rem;
+  font-weight: 900;
+}
+
+.form-copy-value {
+  margin: 0;
+  min-width: 0;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+  font: 700 0.9rem/1.5 var(--font-ui);
+}
+
 .copy-field-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 10px;
   margin-top: 12px;
+}
+
+.copy-field-grid--meta {
+  margin-top: 8px;
 }
 
 .copy-field {
@@ -771,6 +812,10 @@ tbody tr:last-child td {
   line-height: 1.5;
 }
 
+.ipu-reference-section {
+  margin-top: 14px;
+}
+
 @media (max-width: 900px) {
   .topbar {
     align-items: flex-start;
@@ -793,6 +838,11 @@ tbody tr:last-child td {
 
   .fund-detail-columns {
     grid-template-columns: 1fr;
+  }
+
+  .form-copy-row {
+    grid-template-columns: 1fr;
+    gap: 8px;
   }
 
   .copy-field-grid {

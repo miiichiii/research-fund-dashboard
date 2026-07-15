@@ -26,7 +26,7 @@ Natto_MASHを別ボードへ分けず、Funds / Allocations / Line items / Open 
 - Firestore document: `researchFundDashboards/main`
 - Document shape: `{ funds, allocations, lineItems, checks, projects, ipuOrders, updatedAt, updatedBy }`
 
-`ipuOrders` はIPU申請フォーム用の購入候補。`itemName`, `specification`, `catalogNumber`, `quantity` を基本に、判明していれば `unitPriceYen`, `totalYen`, `vendor`, `manufacturer`, `quoteNumber`, `quoteValidUntil` を保存する。不明値を静的ファイルへ埋めず、画面では「要確認」と表示する。
+`ipuOrders` はIPU申請フォーム用の購入候補。`manufacturer`, `itemName`, `specification`, `catalogNumber`, `quantity` を基本に、必要に応じて `unit`, `unitPriceYen`, `totalYen`, `primaryUser`, `sharedUsage`, `remarks`, `vendor`, `quoteNumber`, `quoteValidUntil` を保存する。単価・金額は申請フォームへそのまま貼れる数値表示にし、不明値は静的ファイルへ埋めず画面では「要確認」と表示する。
 
 `app.js` には研究費の金額や明細を置かない。初期データは `seed.local.js` から、ログイン後に「初期データ投入」でFirestoreへ保存する。
 

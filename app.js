@@ -418,23 +418,44 @@ function renderIpuOrders() {
     titleWrap.append(id, title);
     head.append(titleWrap, statusBadge(order.statusLabel || "申請準備", order.status || "check"));
 
-    const fields = document.createElement("div");
-    fields.className = "copy-field-grid";
+    const formFields = document.createElement("div");
+    formFields.className = "form-copy-list";
     [
+      ["メーカー名", order.manufacturer],
       ["品名", order.itemName],
       ["規格・品質", order.specification],
-      ["型番", order.catalogNumber],
+      ["型番・品番", order.catalogNumber],
       ["数量", order.quantity],
-      ["単価", formatOptionalYen(order.unitPriceYen)],
-      ["合計金額", formatOptionalYen(order.totalYen)],
+      ["単位", order.unit],
+      ["単価（円）", formatOptionalInputNumber(order.unitPriceYen)],
+      ["金額（円）", formatOptionalInputNumber(order.totalYen)],
+      ["主たる使用者", order.primaryUser],
+      ["専用共用別", order.sharedUsage],
+      ["備考", order.remarks || order.note],
+    ].forEach(([label, value]) => formFields.append(renderFormCopyField(label, value)));
+
+    card.append(head, formFields);
+
+    const referenceFields = [
       ["業者名", order.vendor],
-      ["メーカー", order.manufacturer],
       ["見積番号", order.quoteNumber],
       ["見積有効期限", order.quoteValidUntil],
-    ].forEach(([label, value]) => fields.append(renderCopyField(label, value)));
+    ].filter(([, value]) => hasCopyValue(value));
 
-    card.append(head, fields);
-    if (order.note) {
+    if (referenceFields.length) {
+      const referenceSection = document.createElement("section");
+      referenceSection.className = "ipu-reference-section";
+      const referenceLabel = document.createElement("p");
+      referenceLabel.className = "mini-label";
+      referenceLabel.textContent = "確認用";
+      const referenceGrid = document.createElement("div");
+      referenceGrid.className = "copy-field-grid copy-field-grid--meta";
+      referenceFields.forEach(([label, value]) => referenceGrid.append(renderCopyField(label, value)));
+      referenceSection.append(referenceLabel, referenceGrid);
+      card.append(referenceSection);
+    }
+
+    if (order.note && order.remarks && order.note !== order.remarks) {
       const note = document.createElement("p");
       note.className = "ipu-order-note";
       note.textContent = order.note;
@@ -444,12 +465,60 @@ function renderIpuOrders() {
   }));
 }
 
-function formatOptionalYen(value) {
-  return Number.isFinite(value) ? formatYen(value) : "";
+function formatOptionalInputNumber(value) {
+  return Number.isFinite(value)
+    ? new Intl.NumberFormat("ja-JP", { maximumFractionDigits: 0 }).format(value)
+    : "";
+}
+
+function hasCopyValue(value) {
+  return value === 0 || (typeof value === "string" ? value.trim() : Boolean(value));
+}
+
+function formatCopyValue(rawValue) {
+  if (rawValue === 0) return "0";
+  if (typeof rawValue === "string") {
+    const trimmed = rawValue.trim();
+    return trimmed || "要確認";
+  }
+  return rawValue ? String(rawValue) : "要確認";
+}
+
+function renderFormCopyField(label, rawValue) {
+  const value = formatCopyValue(rawValue);
+  const row = document.createElement("div");
+  row.className = "form-copy-row";
+  const name = document.createElement("span");
+  name.className = "form-copy-label";
+  name.textContent = label;
+  const output = document.createElement("pre");
+  output.className = "form-copy-value";
+  output.textContent = value;
+  const button = document.createElement("button");
+  button.className = "copy-button";
+  button.type = "button";
+  button.textContent = "コピー";
+  button.disabled = value === "要確認";
+  button.addEventListener("click", async () => {
+    try {
+      await navigator.clipboard.writeText(value);
+      button.textContent = "コピー済み";
+      window.setTimeout(() => { button.textContent = "コピー"; }, 1400);
+    } catch {
+      button.textContent = "選択してコピー";
+      const selection = window.getSelection();
+      const range = document.createRange();
+      range.selectNodeContents(output);
+      selection.removeAllRanges();
+      selection.addRange(range);
+    }
+  });
+  row.append(name, output, button);
+  return row;
 }
 
 function renderCopyField(label, rawValue) {
-  const value = rawValue === 0 ? "0" : String(rawValue || "要確認");
+  const value = formatCopyValue(rawValue);
   const field = document.createElement("div");
   field.className = "copy-field";
   const fieldHead = document.createElement("div");
