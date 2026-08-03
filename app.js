@@ -12,6 +12,7 @@ import {
   doc,
   getFirestore,
   onSnapshot,
+  runTransaction,
   serverTimestamp,
   setDoc,
 } from "https://www.gstatic.com/firebasejs/12.14.0/firebase-firestore.js";
@@ -429,7 +430,16 @@ function renderIpuOrders() {
     const title = document.createElement("h3");
     title.textContent = order.label || candidates[0].itemName || order.itemName || "品名未確認";
     titleWrap.append(id, title);
-    head.append(titleWrap, statusBadge(order.statusLabel || "申請準備", order.status || "check"));
+    const actions = document.createElement("div");
+    actions.className = "ipu-order-actions";
+    const removeButton = document.createElement("button");
+    removeButton.className = "ipu-order-delete";
+    removeButton.type = "button";
+    removeButton.textContent = "リストから削除";
+    removeButton.setAttribute("aria-label", `${title.textContent}をIPU注文リストから削除`);
+    removeButton.addEventListener("click", () => deleteIpuOrder(order, removeButton));
+    actions.append(statusBadge(order.statusLabel || "申請準備", order.status || "check"), removeButton);
+    head.append(titleWrap, actions);
 
     const pasteBlocks = document.createElement("div");
     pasteBlocks.className = "ipu-paste-blocks";
@@ -469,6 +479,65 @@ function formatOptionalInputNumber(value) {
     return /^\d+$/.test(normalized) ? normalized : "";
   }
   return "";
+}
+
+async function deleteIpuOrder(order, button) {
+  if (!state.user || button.disabled) return;
+
+  const orderName = order.label || order.itemName || order.purchaseId || "この品目";
+  const confirmed = window.confirm(
+    `「${orderName}」をIPU注文リストから削除しますか？\nこの操作は元に戻せません。`,
+  );
+  if (!confirmed) return;
+
+  button.disabled = true;
+  button.textContent = "削除中…";
+  setSyncStatus("IPU注文品目を削除中", "provisional");
+
+  try {
+    await runTransaction(db, async (transaction) => {
+      const reference = dashboardRef();
+      const snapshot = await transaction.get(reference);
+      if (!snapshot.exists()) throw new Error("dashboard-not-found");
+
+      const currentOrders = Array.isArray(snapshot.data().ipuOrders)
+        ? snapshot.data().ipuOrders
+        : [];
+      const removeIndex = findIpuOrderIndex(currentOrders, order);
+      if (removeIndex < 0) throw new Error("order-not-found");
+
+      transaction.update(reference, {
+        ipuOrders: currentOrders.filter((_, index) => index !== removeIndex),
+        updatedAt: serverTimestamp(),
+        updatedBy: state.user.email || state.user.uid,
+      });
+    });
+    setSyncStatus("IPU注文品目を削除しました", "confirmed");
+  } catch (error) {
+    if (error.message === "order-not-found") {
+      setSyncStatus("品目はすでに削除されています", "check");
+    } else {
+      setSyncStatus(`削除エラー: ${error.code || error.message}`, "blocked");
+    }
+    button.disabled = false;
+    button.textContent = "リストから削除";
+  }
+}
+
+function findIpuOrderIndex(currentOrders, target) {
+  const stableId = target.id || target.purchaseId;
+  if (stableId) {
+    const byId = currentOrders.findIndex((candidate) =>
+      (target.id && candidate?.id === target.id)
+      || (target.purchaseId && candidate?.purchaseId === target.purchaseId));
+    if (byId >= 0) return byId;
+  }
+
+  return currentOrders.findIndex((candidate) =>
+    candidate?.label === target.label
+    && candidate?.itemName === target.itemName
+    && candidate?.catalogNumber === target.catalogNumber
+    && candidate?.quantity === target.quantity);
 }
 
 function hasCopyValue(value) {

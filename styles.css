@@ -821,6 +821,44 @@ tbody tr:last-child td {
   font: 700 0.9rem/1.5 var(--font-ui);
 }
 
+.ipu-order-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.ipu-order-delete {
+  min-height: 30px;
+  padding: 5px 9px;
+  color: var(--red);
+  background: var(--red-soft);
+  border: 1px solid rgba(173, 92, 84, 0.28);
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 0.72rem;
+  font-weight: 850;
+}
+
+.ipu-order-delete:hover {
+  border-color: rgba(173, 92, 84, 0.52);
+}
+
+.ipu-order-delete:focus-visible {
+  outline: 3px solid rgba(173, 92, 84, 0.24);
+  outline-offset: 2px;
+}
+
+.ipu-order-delete:active {
+  transform: translateY(1px);
+}
+
+.ipu-order-delete:disabled {
+  cursor: wait;
+  opacity: 0.58;
+}
+
 .copy-field-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -953,9 +991,14 @@ tbody tr:last-child td {
 
   .panel-head,
   .fund-head,
-  .item-meta {
+  .item-meta,
+  .ipu-order-head {
     align-items: flex-start;
     flex-direction: column;
+  }
+
+  .ipu-order-actions {
+    justify-content: flex-start;
   }
 
   .project-list,
