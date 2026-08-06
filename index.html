@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="robots" content="noindex,nofollow,noarchive,noimageindex,nosnippet">
   <title>研究費メインボード</title>
-  <link rel="stylesheet" href="./styles.css?v=20260803-2">
+  <link rel="stylesheet" href="./styles.css?v=20260806-1">
 </head>
 <body>
   <header class="topbar">
@@ -146,6 +146,17 @@
         <span class="mini-label">入力画面の順でコピー</span>
       </div>
       <p class="ipu-orders-lead">品名・規格/品質・型番・単価・備考の5項目を貼りやすい形にしています。品名は名称とメーカー名を並べ、単価はカンマなしの半角数字で表示し、候補が複数ある時はカード内に候補を並べます。</p>
+      <div class="purchase-pipeline-head">
+        <div>
+          <h3>購入案件の工程</h3>
+          <p>工程と予算計上を分けて表示します。完了案件は削除せず、アーカイブとして記録を残します。</p>
+        </div>
+      </div>
+      <div id="purchasePipeline" class="purchase-pipeline"></div>
+      <div class="purchase-copy-head">
+        <h3>IPU申請用コピー</h3>
+        <span class="mini-label">入力画面の順でコピー</span>
+      </div>
       <div id="ipuOrderList" class="ipu-order-list"></div>
     </section>
   </main>
@@ -180,6 +191,6 @@
     </div>
   </dialog>
 
-  <script type="module" src="./app.js?v=20260803-2"></script>
+  <script type="module" src="./app.js?v=20260806-1"></script>
 </body>
 </html>

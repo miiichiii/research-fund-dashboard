@@ -37,6 +37,20 @@ const statusLabels = {
   later: "後回し",
 };
 
+const workflowStages = [
+  { id: "considering", label: "購入検討中" },
+  { id: "quote_requested", label: "見積依頼中" },
+  { id: "approval_in_progress", label: "申請・手続中" },
+  { id: "ordered", label: "発注済み" },
+  { id: "archived", label: "完了 / アーカイブ" },
+];
+
+const budgetStageLabels = {
+  planned: "使用予定",
+  committed: "発注・支払予定",
+  spent: "支払確定",
+};
+
 const emptyDashboard = {
   funds: [],
   allocations: [],
@@ -102,6 +116,7 @@ const elements = {
   lineItemTable: document.getElementById("lineItemTable"),
   checkList: document.getElementById("checkList"),
   ipuOrderList: document.getElementById("ipuOrderList"),
+  purchasePipeline: document.getElementById("purchasePipeline"),
   fundDetailDialog: document.getElementById("fundDetailDialog"),
   fundDetailClose: document.getElementById("fundDetailClose"),
   fundDetailCode: document.getElementById("fundDetailCode"),
@@ -407,6 +422,7 @@ function ipuOrders() {
 
 function renderIpuOrders() {
   const orders = ipuOrders();
+  renderPurchasePipeline();
   if (!orders.length) {
     elements.ipuOrderList.replaceChildren(renderEmptyState("IPUで注文する品目はまだ登録されていません。"));
     return;
@@ -432,13 +448,16 @@ function renderIpuOrders() {
     titleWrap.append(id, title);
     const actions = document.createElement("div");
     actions.className = "ipu-order-actions";
-    const removeButton = document.createElement("button");
-    removeButton.className = "ipu-order-delete";
-    removeButton.type = "button";
-    removeButton.textContent = "リストから削除";
-    removeButton.setAttribute("aria-label", `${title.textContent}をIPU注文リストから削除`);
-    removeButton.addEventListener("click", () => deleteIpuOrder(order, removeButton));
-    actions.append(statusBadge(order.statusLabel || "申請準備", order.status || "check"), removeButton);
+    actions.append(statusBadge(order.statusLabel || "申請準備", order.status || "check"));
+    if (canDeleteIpuOrder(order)) {
+      const removeButton = document.createElement("button");
+      removeButton.className = "ipu-order-delete";
+      removeButton.type = "button";
+      removeButton.textContent = "誤登録を削除";
+      removeButton.setAttribute("aria-label", `${title.textContent}の誤登録を削除`);
+      removeButton.addEventListener("click", () => deleteIpuOrder(order, removeButton));
+      actions.append(removeButton);
+    }
     head.append(titleWrap, actions);
 
     const pasteBlocks = document.createElement("div");
@@ -467,6 +486,191 @@ function renderIpuOrders() {
   elements.ipuOrderList.replaceChildren(...renderedOrders);
 }
 
+function renderPurchasePipeline() {
+  const cases = buildPurchaseCases();
+  const lanes = workflowStages.map((stage) => {
+    const lane = document.createElement("section");
+    lane.className = "purchase-lane";
+    lane.dataset.stage = stage.id;
+
+    const head = document.createElement("div");
+    head.className = "purchase-lane-head";
+    const title = document.createElement("h4");
+    title.textContent = stage.label;
+    const matching = cases.filter((purchaseCase) => purchaseCase.workflowStatus === stage.id);
+    const count = document.createElement("span");
+    count.className = "mini-label";
+    count.textContent = `${matching.length}件`;
+    head.append(title, count);
+    lane.append(head);
+
+    if (!matching.length) {
+      lane.append(renderEmptyState("該当案件なし"));
+      return lane;
+    }
+
+    matching.forEach((purchaseCase) => lane.append(renderPurchaseCase(purchaseCase)));
+    return lane;
+  });
+  elements.purchasePipeline.replaceChildren(...lanes);
+}
+
+function buildPurchaseCases() {
+  const cases = new Map();
+  ipuOrders().forEach((order) => {
+    const caseId = getPurchaseCaseId(order);
+    const existing = cases.get(caseId) || { caseId, orders: [], lineItems: [] };
+    existing.orders.push(order);
+    cases.set(caseId, existing);
+  });
+
+  lineItems().forEach((item) => {
+    if (!isPurchaseLineItem(item)) return;
+    const caseId = getLineItemCaseId(item);
+    const existing = cases.get(caseId) || { caseId, orders: [], lineItems: [] };
+    existing.lineItems.push(item);
+    cases.set(caseId, existing);
+  });
+
+  return Array.from(cases.values())
+    .map(normalizePurchaseCase)
+    .sort((a, b) => (b.sortDate || "").localeCompare(a.sortDate || "") || a.title.localeCompare(b.title, "ja"));
+}
+
+function getPurchaseCaseId(order) {
+  return order.caseId || order.purchaseId || order.id || `ipu-order-${order.order || order.itemName}`;
+}
+
+function getLineItemCaseId(item) {
+  if (item.caseId || item.purchaseId) return item.caseId || item.purchaseId;
+  if (item.order === 180 || normalizeText(item.title).includes("Bambu Lab PLAマット")) return "PUR-2026-0728-01";
+  return `line-item-${item.order || normalizeText(item.title)}`;
+}
+
+function isPurchaseLineItem(item) {
+  if (["check", "later", "fixed", "provisional"].includes(item.status)) return true;
+  return ["発注", "支払", "購入", "注文", "納品", "支出負担行為"].some((word) =>
+    `${item.next || ""} ${item.source || ""}`.includes(word));
+}
+
+function normalizePurchaseCase(group) {
+  const order = group.orders[0] || {};
+  const item = group.lineItems[0] || {};
+  const workflowStatus = inferWorkflowStatus(order, item);
+  const budgetStatus = inferBudgetStatus(order, item, workflowStatus);
+  const title = order.label || order.itemName || item.title || "品名未確認";
+  const orderTotal = group.orders.length > 1
+    ? group.orders.reduce((sum, entry) => sum + (Number(entry.totalYen) || 0), 0)
+    : order.totalYen;
+  const totalYen = orderTotal ?? item.amountYen;
+  return {
+    ...group,
+    title,
+    workflowStatus,
+    budgetStatus,
+    totalYen,
+    fundId: order.fundId || item.fundId,
+    next: order.nextAction || item.next || order.note || "次アクション未登録",
+    sortDate: order.orderDate || item.date || order.priceCheckedAt || "",
+  };
+}
+
+function inferWorkflowStatus(order, item) {
+  const explicit = order.workflowStatus || item.workflowStatus;
+  if (workflowStages.some((stage) => stage.id === explicit)) return explicit;
+  if (order.archived || item.archived || ["完了", "支払確定"].includes(order.status)) return "archived";
+  const text = `${order.status || ""} ${order.statusLabel || ""} ${item.status || ""} ${item.next || ""}`;
+  if (/支払済|支払確定|完了/.test(text) && !/支払済へ|支払確定へ/.test(text)) return "archived";
+  if (/発注済|注文送信済|支出負担行為済|納品|FAIR登録/.test(text)) return "ordered";
+  if (/見積依頼中|見積待ち/.test(text)) return "quote_requested";
+  if (/申請|手続|購入予定|使用予定|仮更新|fixed|provisional/.test(text)) return "approval_in_progress";
+  return "considering";
+}
+
+function inferBudgetStatus(order, item, workflowStatus) {
+  const explicit = order.budgetStatus || item.budgetStatus;
+  if (budgetStageLabels[explicit]) return explicit;
+  const text = `${order.status || ""} ${order.statusLabel || ""} ${item.status || ""} ${item.next || ""}`;
+  if (/支払済|支払確定/.test(text) && !/支払済へ|支払確定へ/.test(text)) return "spent";
+  if (workflowStatus === "ordered" || /支出負担行為済|発注済|注文送信済/.test(text)) return "committed";
+  return "planned";
+}
+
+function renderPurchaseCase(purchaseCase) {
+  const card = document.createElement("article");
+  card.className = "purchase-case";
+  const id = document.createElement("p");
+  id.className = "kicker";
+  id.textContent = purchaseCase.caseId;
+  const title = document.createElement("h5");
+  title.textContent = purchaseCase.title;
+  const meta = document.createElement("div");
+  meta.className = "purchase-case-meta";
+  meta.append(
+    statusBadge(budgetStageLabels[purchaseCase.budgetStatus], `budget-${purchaseCase.budgetStatus}`),
+    textSpan(purchaseCase.fundId || "財源未設定", "mini-label"),
+  );
+  const amount = document.createElement("strong");
+  amount.className = "purchase-case-amount";
+  amount.textContent = purchaseCase.totalYen ? formatYen(purchaseCase.totalYen) : "金額未確認";
+  const next = document.createElement("p");
+  next.className = "purchase-case-next";
+  next.textContent = purchaseCase.next;
+  card.append(id, title, meta, amount, next);
+  if (purchaseCase.workflowStatus === "ordered") {
+    const archiveButton = document.createElement("button");
+    archiveButton.className = "purchase-case-archive";
+    archiveButton.type = "button";
+    archiveButton.textContent = "完了としてアーカイブ";
+    archiveButton.addEventListener("click", () => archivePurchaseCase(purchaseCase, archiveButton));
+    card.append(archiveButton);
+  }
+  return card;
+}
+
+async function archivePurchaseCase(purchaseCase, button) {
+  if (!state.user || button.disabled) return;
+  const confirmed = window.confirm(
+    `「${purchaseCase.title}」を支払確定・完了としてアーカイブしますか？\n案件は削除されず、完了レーンに残ります。`,
+  );
+  if (!confirmed) return;
+
+  button.disabled = true;
+  button.textContent = "更新中…";
+  setSyncStatus("購入案件をアーカイブ中", "provisional");
+  try {
+    await runTransaction(db, async (transaction) => {
+      const reference = dashboardRef();
+      const snapshot = await transaction.get(reference);
+      if (!snapshot.exists()) throw new Error("dashboard-not-found");
+      const payload = snapshot.data();
+      const nextOrders = (Array.isArray(payload.ipuOrders) ? payload.ipuOrders : []).map((order) =>
+        getPurchaseCaseId(order) === purchaseCase.caseId
+          ? { ...order, workflowStatus: "archived", budgetStatus: "spent", archived: true }
+          : order);
+      const nextItems = (Array.isArray(payload.lineItems) ? payload.lineItems : []).map((item) =>
+        getLineItemCaseId(item) === purchaseCase.caseId
+          ? { ...item, workflowStatus: "archived", budgetStatus: "spent", archived: true }
+          : item);
+      transaction.update(reference, {
+        ipuOrders: nextOrders,
+        lineItems: nextItems,
+        updatedAt: serverTimestamp(),
+        updatedBy: state.user.email || state.user.uid,
+      });
+    });
+    setSyncStatus("完了案件としてアーカイブしました", "confirmed");
+  } catch (error) {
+    setSyncStatus(`アーカイブエラー: ${error.code || error.message}`, "blocked");
+    button.disabled = false;
+    button.textContent = "完了としてアーカイブ";
+  }
+}
+
+function canDeleteIpuOrder(order) {
+  return inferWorkflowStatus(order, {}) === "considering" && !order.orderDate && !order.requestNumber;
+}
+
 function formatOptionalInputNumber(value) {
   if (typeof value === "number" && Number.isFinite(value)) {
     return String(Math.trunc(value));
@@ -483,10 +687,14 @@ function formatOptionalInputNumber(value) {
 
 async function deleteIpuOrder(order, button) {
   if (!state.user || button.disabled) return;
+  if (!canDeleteIpuOrder(order)) {
+    setSyncStatus("削除できるのは未着手の誤登録候補だけです。完了案件はアーカイブしてください", "check");
+    return;
+  }
 
   const orderName = order.label || order.itemName || order.purchaseId || "この品目";
   const confirmed = window.confirm(
-    `「${orderName}」をIPU注文リストから削除しますか？\nこの操作は元に戻せません。`,
+    `「${orderName}」を誤登録候補として削除しますか？\nこの操作は元に戻せません。`,
   );
   if (!confirmed) return;
 

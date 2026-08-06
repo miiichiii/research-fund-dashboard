@@ -28,7 +28,17 @@ Natto_MASHを別ボードへ分けず、Funds / Allocations / Line items / Open 
 
 `ipuOrders` はIPU申請フォーム用の購入候補。`manufacturer`, `itemName`, `specification`, `catalogNumber`, `quantity` を基本に、必要に応じて `unitPriceYen`, `remarks`, `vendor`, `quoteNumber`, `quoteValidUntil` を保存する。表示は `品名 / 規格・品質 / 型番・品番 / 単価 / 備考` の5項目コピーを主にし、品名は名称とメーカー名を並べ、備考は `○○会社名で見積もり` を自動生成する。単価候補が複数ある場合は `quoteCandidates` などの配列から候補表示できるようにし、金額はカンマなしの半角数字表示にする。不明値は静的ファイルへ埋めず画面では「要確認」と表示する。
 
-各購入候補は「リストから削除」で削除できる。誤操作防止の確認後、Firestoreトランザクションで該当する1件だけを削除し、既存の他データは保持する。旧データに `id` がない場合も、既存フィールドの組み合わせで対象を特定する。
+購入案件は工程と予算計上を分けて扱う。新規・更新データでは次の任意フィールドを使用し、未設定の旧データは画面側の互換レイヤーで既存の `status`、`statusLabel`、`next` から安全側に分類する。
+
+- `workflowStatus`: `considering` / `quote_requested` / `approval_in_progress` / `ordered` / `archived`
+- `budgetStatus`: `planned` / `committed` / `spent`
+- `archived`: 完了案件を履歴として保持する場合は `true`
+
+`workflowStatus` は購入工程、`budgetStatus` は残額計算上の扱いであり、同じ意味として扱わない。たとえば発注済みは通常 `ordered + committed`、支払確定後は `archived + spent` とする。既存の `lineItems.status` は資金台帳表示との互換性のため直ちには削除しない。
+
+削除できるのは、注文日・要求書番号がなく工程が `considering` の誤登録候補だけ。発注・手続開始後の案件は削除せず、完了時に `archived` として履歴を保持する。旧データに `id` がない場合も、既存フィールドの組み合わせで対象を特定する。
+
+発注済み案件の「完了としてアーカイブ」はFirestoreトランザクションで同じ案件IDの `ipuOrders` と `lineItems` をまとめて `workflowStatus: archived`、`budgetStatus: spent` にする。納品・検収・最終支払額を確認してから実行する。
 
 `app.js` には研究費の金額や明細を置かない。初期データは `seed.local.js` から、ログイン後に「初期データ投入」でFirestoreへ保存する。
 

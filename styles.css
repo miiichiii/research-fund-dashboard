@@ -703,6 +703,131 @@ tbody tr:last-child td {
   gap: 14px;
 }
 
+.purchase-pipeline-head,
+.purchase-copy-head,
+.purchase-lane-head,
+.purchase-case-meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.purchase-pipeline-head {
+  margin-top: 20px;
+}
+
+.purchase-pipeline-head h3,
+.purchase-pipeline-head p,
+.purchase-copy-head h3 {
+  margin: 0;
+}
+
+.purchase-pipeline-head p {
+  margin-top: 4px;
+  color: var(--muted);
+  font-size: 0.84rem;
+}
+
+.purchase-pipeline {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(220px, 1fr));
+  gap: 12px;
+  margin: 14px 0 24px;
+  overflow-x: auto;
+  padding-bottom: 6px;
+}
+
+.purchase-lane {
+  min-width: 220px;
+  padding: 10px;
+  background: rgba(220, 231, 219, 0.32);
+  border: 1px solid var(--line);
+  border-radius: 9px;
+}
+
+.purchase-lane-head {
+  margin-bottom: 10px;
+}
+
+.purchase-lane-head h4 {
+  margin: 0;
+  font-size: 0.86rem;
+}
+
+.purchase-case {
+  padding: 12px;
+  margin-top: 8px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+
+.purchase-case h5 {
+  margin: 3px 0 9px;
+  font-size: 0.9rem;
+  line-height: 1.35;
+}
+
+.purchase-case-meta {
+  align-items: flex-start;
+  flex-wrap: wrap;
+  justify-content: flex-start;
+}
+
+.purchase-case-amount {
+  display: block;
+  margin-top: 10px;
+}
+
+.purchase-case-next {
+  margin: 7px 0 0;
+  color: var(--muted);
+  font-size: 0.76rem;
+  line-height: 1.45;
+}
+
+.purchase-case-archive {
+  width: 100%;
+  min-height: 34px;
+  margin-top: 10px;
+  color: var(--green);
+  background: var(--green-soft);
+  border: 1px solid rgba(51, 91, 61, 0.25);
+  border-radius: 7px;
+  cursor: pointer;
+  font-size: 0.76rem;
+  font-weight: 850;
+}
+
+.purchase-case-archive:hover {
+  filter: brightness(0.97);
+}
+
+.purchase-case-archive:disabled {
+  cursor: wait;
+  opacity: 0.62;
+}
+
+.purchase-copy-head {
+  margin-bottom: 12px;
+}
+
+.status-pill[data-status="budget-planned"] {
+  background: var(--gold-soft);
+  color: var(--gold);
+}
+
+.status-pill[data-status="budget-committed"] {
+  background: var(--blue-soft);
+  color: var(--blue);
+}
+
+.status-pill[data-status="budget-spent"] {
+  background: var(--green-soft);
+  color: var(--green);
+}
+
 .ipu-order-card {
   padding: 16px;
   background: rgba(255, 250, 241, 0.78);
