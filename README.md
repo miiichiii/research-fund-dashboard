@@ -36,6 +36,8 @@ Natto_MASHを別ボードへ分けず、Funds / Allocations / Line items / Open 
 
 `workflowStatus` は購入工程、`budgetStatus` は残額計算上の扱いであり、同じ意味として扱わない。たとえば発注済みは通常 `ordered + committed`、支払確定後は `archived + spent` とする。既存の `lineItems.status` は資金台帳表示との互換性のため直ちには削除しない。
 
+IPU申請フォーム用のコピペ一覧には未発注案件だけを表示する。`workflowStatus` が `ordered` または `archived` の案件は一覧から除外するが、購入工程レーンとFirestore台帳には履歴として保持する。
+
 削除できるのは、注文日・要求書番号がなく工程が `considering` の誤登録候補だけ。発注・手続開始後の案件は削除せず、完了時に `archived` として履歴を保持する。旧データに `id` がない場合も、既存フィールドの組み合わせで対象を特定する。
 
 発注済み案件の「完了としてアーカイブ」はFirestoreトランザクションで同じ案件IDの `ipuOrders` と `lineItems` をまとめて `workflowStatus: archived`、`budgetStatus: spent` にする。納品・検収・最終支払額を確認してから実行する。

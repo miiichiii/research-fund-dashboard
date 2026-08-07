@@ -424,11 +424,15 @@ function ipuOrders() {
   return state.data.ipuOrders || [];
 }
 
+function ipuCopyOrders() {
+  return ipuOrders().filter((order) => !["ordered", "archived"].includes(inferWorkflowStatus(order, {})));
+}
+
 function renderIpuOrders() {
-  const orders = ipuOrders();
+  const orders = ipuCopyOrders();
   renderPurchasePipeline();
   if (!orders.length) {
-    elements.ipuOrderList.replaceChildren(renderEmptyState("IPUで注文する品目はまだ登録されていません。"));
+    elements.ipuOrderList.replaceChildren(renderEmptyState("IPUで注文する未発注の品目はありません。発注済み案件は購入工程に履歴として残っています。"));
     return;
   }
 
