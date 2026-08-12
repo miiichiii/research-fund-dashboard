@@ -58,6 +58,7 @@ const emptyDashboard = {
   checks: [],
   projects: [],
   ipuOrders: [],
+  ipuOrderEmailTemplate: "",
 };
 
 const ipuPasteFields = [
@@ -430,9 +431,13 @@ function ipuCopyOrders() {
 
 function renderIpuOrders() {
   const orders = ipuCopyOrders();
+  const emailDraft = renderIpuOrderEmailDraft(state.data.ipuOrderEmailTemplate);
   renderPurchasePipeline();
   if (!orders.length) {
-    elements.ipuOrderList.replaceChildren(renderEmptyState("IPUで注文する未発注の品目はありません。発注済み案件は購入工程に履歴として残っています。"));
+    elements.ipuOrderList.replaceChildren(
+      ...(emailDraft ? [emailDraft] : []),
+      renderEmptyState("IPUで注文する未発注の品目はありません。発注済み案件は購入工程に履歴として残っています。"),
+    );
     return;
   }
 
@@ -487,11 +492,15 @@ function renderIpuOrders() {
   });
 
   if (orders.length > 1) {
-    elements.ipuOrderList.replaceChildren(renderIpuBulkCopyPanel(ordersWithCandidates), ...renderedOrders);
+    elements.ipuOrderList.replaceChildren(
+      ...(emailDraft ? [emailDraft] : []),
+      renderIpuBulkCopyPanel(ordersWithCandidates),
+      ...renderedOrders,
+    );
     return;
   }
 
-  elements.ipuOrderList.replaceChildren(...renderedOrders);
+  elements.ipuOrderList.replaceChildren(...(emailDraft ? [emailDraft] : []), ...renderedOrders);
 }
 
 function renderPurchasePipeline() {
@@ -1028,6 +1037,32 @@ function renderIpuBulkCopyPanel(ordersWithCandidates) {
     : "1行が1件、列は 品名 → 規格・品質 → 型番・品番 → 数量 → 単価 → 合計 → 業者名 → URL → 備考 です。左上セルから貼り付けると、複数件をまとめて入れられます。";
 
   panel.append(head, note);
+  return panel;
+}
+
+function renderIpuOrderEmailDraft(rawTemplate) {
+  const template = String(rawTemplate || "").trim();
+  if (!template) return null;
+
+  const panel = document.createElement("section");
+  panel.className = "ipu-order-email-draft";
+  const head = document.createElement("div");
+  head.className = "ipu-order-email-draft-head";
+  const textWrap = document.createElement("div");
+  const kicker = document.createElement("p");
+  kicker.className = "kicker";
+  kicker.textContent = "Mail draft";
+  const title = document.createElement("h3");
+  title.textContent = "鈴木様宛 注文依頼メール";
+  textWrap.append(kicker, title);
+  const note = document.createElement("p");
+  note.className = "ipu-order-email-draft-note";
+  note.textContent = "送信は行いません。本文をコピーしてIPUメールに貼り付けてください。";
+  head.append(textWrap, note);
+  panel.append(head, renderCopyField("メール本文", template, {
+    buttonText: "メール本文をコピー",
+    className: "copy-field--email",
+  }));
   return panel;
 }
 
