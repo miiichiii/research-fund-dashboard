@@ -946,6 +946,11 @@ tbody tr:last-child td {
   font: 700 0.9rem/1.5 var(--font-ui);
 }
 
+.form-copy-link {
+  color: var(--blue);
+  text-decoration-thickness: 2px;
+}
+
 .ipu-order-actions {
   display: flex;
   align-items: center;

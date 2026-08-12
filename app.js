@@ -909,9 +909,16 @@ function renderFormCopyField(label, rawValue) {
   const name = document.createElement("span");
   name.className = "form-copy-label";
   name.textContent = label;
-  const output = document.createElement("pre");
-  output.className = "form-copy-value";
+  const isWebUrl = /^https?:\/\//i.test(value);
+  const output = document.createElement(isWebUrl ? "a" : "pre");
+  output.className = isWebUrl ? "form-copy-value form-copy-link" : "form-copy-value";
   output.textContent = value;
+  if (isWebUrl) {
+    output.href = value;
+    output.target = "_blank";
+    output.rel = "noopener";
+    output.title = "販売ページを開く";
+  }
   attachCopyBehavior(button, value, { defaultText: "コピー", selectionTarget: output });
   row.append(button, name, output);
   return row;
