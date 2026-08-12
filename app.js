@@ -294,6 +294,9 @@ function normalizeDashboardData(payload = {}) {
     checks: sortByOrder(asArray(payload.checks)),
     projects: sortByOrder(asArray(payload.projects)),
     ipuOrders: sortByOrder(asArray(payload.ipuOrders)),
+    ipuOrderEmailTemplate: typeof payload.ipuOrderEmailTemplate === "string"
+      ? payload.ipuOrderEmailTemplate
+      : "",
   };
 }
 
