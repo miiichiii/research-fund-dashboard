@@ -1053,8 +1053,25 @@ function buildIpuOrderEmailItems(orders) {
       catalogNumber && `型番：${catalogNumber}`,
       hasCopyValue(order.quantity) && `数量：${formatOptionalInputNumber(order.quantity)}`,
     ].filter(Boolean);
-    return `${index + 1}. ${itemName}${details.length ? `（${details.join("、")}）` : ""}`;
+    const reason = getIpuOrderReason(order, candidate);
+    return `${index + 1}. ${itemName}${details.length ? `（${details.join("、")}）` : ""}${reason ? `\n   注文理由：${reason}` : ""}`;
   }).join("\n");
+}
+
+function getIpuOrderReason(order, candidate) {
+  const explicitReason = pickCopyValue(
+    candidate.orderReason,
+    candidate.purchaseReason,
+    candidate.reason,
+    order.orderReason,
+    order.purchaseReason,
+    order.reason,
+  );
+  if (hasCopyValue(explicitReason)) return String(explicitReason).trim();
+
+  const note = pickCopyValue(candidate.note, candidate.remarks, order.note, order.remarks);
+  const matched = String(note || "").match(/^\s*(?:注文理由|用途)\s*[:：]\s*(.+)\s*$/s);
+  return matched ? matched[1].trim() : "";
 }
 
 function renderIpuOrderEmailDraft(rawTemplate, orders) {
