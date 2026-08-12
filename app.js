@@ -434,7 +434,7 @@ function ipuCopyOrders() {
 
 function renderIpuOrders() {
   const orders = ipuCopyOrders();
-  const emailDraft = renderIpuOrderEmailDraft(state.data.ipuOrderEmailTemplate);
+  const emailDraft = renderIpuOrderEmailDraft(state.data.ipuOrderEmailTemplate, orders);
   renderPurchasePipeline();
   if (!orders.length) {
     elements.ipuOrderList.replaceChildren(
@@ -1043,9 +1043,23 @@ function renderIpuBulkCopyPanel(ordersWithCandidates) {
   return panel;
 }
 
-function renderIpuOrderEmailDraft(rawTemplate) {
+function buildIpuOrderEmailItems(orders) {
+  return orders.map((order, index) => {
+    const candidate = getQuoteCandidates(order)[0] || {};
+    const itemName = pickCopyValue(candidate.itemName, order.itemName, order.label) || "品名要確認";
+    const catalogNumber = getCandidateCatalogNumber(order, candidate);
+    const details = [
+      catalogNumber && `型番：${catalogNumber}`,
+      hasCopyValue(order.quantity) && `数量：${formatOptionalInputNumber(order.quantity)}`,
+    ].filter(Boolean);
+    return `${index + 1}. ${itemName}${details.length ? `（${details.join("、")}）` : ""}`;
+  }).join("\n");
+}
+
+function renderIpuOrderEmailDraft(rawTemplate, orders) {
   const template = String(rawTemplate || "").trim();
   if (!template) return null;
+  const emailBody = template.replace("{{ORDER_ITEMS}}", buildIpuOrderEmailItems(orders));
 
   const panel = document.createElement("section");
   panel.className = "ipu-order-email-draft";
@@ -1062,7 +1076,7 @@ function renderIpuOrderEmailDraft(rawTemplate) {
   note.className = "ipu-order-email-draft-note";
   note.textContent = "送信は行いません。本文をコピーしてIPUメールに貼り付けてください。";
   head.append(textWrap, note);
-  panel.append(head, renderCopyField("メール本文", template, {
+  panel.append(head, renderCopyField("メール本文", emailBody, {
     buttonText: "メール本文をコピー",
     className: "copy-field--email",
   }));
