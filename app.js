@@ -993,6 +993,7 @@ function renderIpuPasteBlock(order, candidate, index, total) {
 
   const referenceFields = [
     ["会社名", candidate.companyName],
+    ["公式製品ページ", order.officialProductUrl !== order.sourceUrl ? order.officialProductUrl : ""],
   ].filter(([, value]) => hasCopyValue(value));
 
   if (referenceFields.length) {
@@ -1003,7 +1004,7 @@ function renderIpuPasteBlock(order, candidate, index, total) {
     referenceLabel.textContent = "確認用";
     const referenceGrid = document.createElement("div");
     referenceGrid.className = "copy-field-grid copy-field-grid--meta";
-    referenceFields.forEach(([label, value]) => referenceGrid.append(renderCopyField(label, value)));
+    referenceFields.forEach(([label, value]) => referenceGrid.append(renderFormCopyField(label, value)));
     referenceSection.append(referenceLabel, referenceGrid);
     block.append(referenceSection);
   }
