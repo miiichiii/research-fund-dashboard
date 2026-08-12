@@ -58,6 +58,7 @@ const emptyDashboard = {
   checks: [],
   projects: [],
   ipuOrders: [],
+  ipuOrderEmailSubject: "",
   ipuOrderEmailTemplate: "",
 };
 
@@ -294,6 +295,9 @@ function normalizeDashboardData(payload = {}) {
     checks: sortByOrder(asArray(payload.checks)),
     projects: sortByOrder(asArray(payload.projects)),
     ipuOrders: sortByOrder(asArray(payload.ipuOrders)),
+    ipuOrderEmailSubject: typeof payload.ipuOrderEmailSubject === "string"
+      ? payload.ipuOrderEmailSubject
+      : "",
     ipuOrderEmailTemplate: typeof payload.ipuOrderEmailTemplate === "string"
       ? payload.ipuOrderEmailTemplate
       : "",
@@ -434,7 +438,11 @@ function ipuCopyOrders() {
 
 function renderIpuOrders() {
   const orders = ipuCopyOrders();
-  const emailDraft = renderIpuOrderEmailDraft(state.data.ipuOrderEmailTemplate, orders);
+  const emailDraft = renderIpuOrderEmailDraft(
+    state.data.ipuOrderEmailSubject,
+    state.data.ipuOrderEmailTemplate,
+    orders,
+  );
   renderPurchasePipeline();
   if (!orders.length) {
     elements.ipuOrderList.replaceChildren(
@@ -1074,9 +1082,10 @@ function getIpuOrderReason(order, candidate) {
   return matched ? matched[1].trim() : "";
 }
 
-function renderIpuOrderEmailDraft(rawTemplate, orders) {
+function renderIpuOrderEmailDraft(rawSubject, rawTemplate, orders) {
   const template = String(rawTemplate || "").trim();
   if (!template) return null;
+  const subject = String(rawSubject || "").trim();
   const emailBody = template.replace("{{ORDER_ITEMS}}", buildIpuOrderEmailItems(orders));
 
   const panel = document.createElement("section");
@@ -1094,10 +1103,18 @@ function renderIpuOrderEmailDraft(rawTemplate, orders) {
   note.className = "ipu-order-email-draft-note";
   note.textContent = "送信は行いません。本文をコピーしてIPUメールに貼り付けてください。";
   head.append(textWrap, note);
-  panel.append(head, renderCopyField("メール本文", emailBody, {
+  const fields = [];
+  if (subject) {
+    fields.push(renderCopyField("メール件名", subject, {
+      buttonText: "メール件名をコピー",
+      className: "copy-field--email",
+    }));
+  }
+  fields.push(renderCopyField("メール本文", emailBody, {
     buttonText: "メール本文をコピー",
     className: "copy-field--email",
   }));
+  panel.append(head, ...fields);
   return panel;
 }
 
