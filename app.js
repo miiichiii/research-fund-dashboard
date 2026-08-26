@@ -69,6 +69,7 @@ const emptyDashboard = {
   ipuOrders: [],
   ipuOrderEmailSubject: "",
   ipuOrderEmailTemplate: "",
+  ipuOrderEmailCompleted: false,
 };
 
 const ipuPasteFields = [
@@ -311,6 +312,7 @@ function normalizeDashboardData(payload = {}) {
     ipuOrderEmailTemplate: typeof payload.ipuOrderEmailTemplate === "string"
       ? payload.ipuOrderEmailTemplate
       : "",
+    ipuOrderEmailCompleted: payload.ipuOrderEmailCompleted === true,
   };
 }
 
@@ -448,10 +450,12 @@ function ipuCopyOrders() {
 
 function renderIpuOrders() {
   const orders = ipuCopyOrders();
-  const emailDraft = renderIpuOrderEmailDraft(
+  const emailCompleted = state.data.ipuOrderEmailCompleted === true;
+  const emailDraft = renderIpuOrderEmailSection(
     state.data.ipuOrderEmailSubject,
     state.data.ipuOrderEmailTemplate,
     orders,
+    emailCompleted,
   );
   renderPurchasePipeline();
   if (!orders.length) {
@@ -1472,6 +1476,68 @@ function getIpuOrderReason(order, candidate) {
   const note = pickCopyValue(candidate.note, candidate.remarks, order.note, order.remarks);
   const matched = String(note || "").match(/^\s*(?:注文理由|用途)\s*[:：]\s*(.+)\s*$/s);
   return matched ? matched[1].trim() : "";
+}
+
+function renderIpuOrderEmailSection(rawSubject, rawTemplate, orders, completed) {
+  const template = String(rawTemplate || "").trim();
+  if (!template) return null;
+
+  if (completed) {
+    return renderIpuOrderEmailArchivedToggle(rawSubject, rawTemplate, orders);
+  }
+
+  const draft = renderIpuOrderEmailDraft(rawSubject, rawTemplate, orders);
+  if (!draft) return null;
+
+  const completeBtn = document.createElement("button");
+  completeBtn.className = "purchase-case-action ipu-email-complete-btn";
+  completeBtn.type = "button";
+  completeBtn.textContent = "完了して非表示（復元可）";
+  completeBtn.addEventListener("click", () => setIpuOrderEmailCompleted(true, completeBtn));
+  draft.append(completeBtn);
+  return draft;
+}
+
+function renderIpuOrderEmailArchivedToggle(rawSubject, rawTemplate, orders) {
+  const wrap = document.createElement("div");
+  wrap.className = "ipu-order-email-archived";
+
+  const restoreBtn = document.createElement("button");
+  restoreBtn.className = "purchase-case-action";
+  restoreBtn.type = "button";
+  restoreBtn.textContent = "注文依頼メールを再表示する";
+  restoreBtn.addEventListener("click", () => setIpuOrderEmailCompleted(false, restoreBtn));
+
+  const label = document.createElement("span");
+  label.className = "mini-label";
+  label.textContent = "注文依頼メール：送信完了済み";
+
+  wrap.append(label, restoreBtn);
+  return wrap;
+}
+
+async function setIpuOrderEmailCompleted(completed, button) {
+  if (!state.user || button.disabled) return;
+  button.disabled = true;
+  button.textContent = "更新中…";
+  setSyncStatus("メール状態を更新中", "provisional");
+  try {
+    await runTransaction(db, async (transaction) => {
+      const reference = dashboardRef();
+      const snapshot = await transaction.get(reference);
+      if (!snapshot.exists()) throw new Error("dashboard-not-found");
+      transaction.update(reference, {
+        ipuOrderEmailCompleted: completed,
+        updatedAt: serverTimestamp(),
+        updatedBy: state.user.email || state.user.uid,
+      });
+    });
+    setSyncStatus(completed ? "注文依頼メールを完了にしました" : "注文依頼メールを再表示しました", "confirmed");
+  } catch (error) {
+    setSyncStatus(`更新エラー: ${error.code || error.message}`, "blocked");
+    button.disabled = false;
+    button.textContent = completed ? "完了して非表示（復元可）" : "注文依頼メールを再表示する";
+  }
 }
 
 function renderIpuOrderEmailDraft(rawSubject, rawTemplate, orders) {

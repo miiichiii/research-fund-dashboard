@@ -24,11 +24,13 @@ Natto_MASHを別ボードへ分けず、Funds / Allocations / Line items / Open 
 - Firebase project: `project-manage-56fd1`
 - Auth provider: Google
 - Firestore document: `researchFundDashboards/main`
-- Document shape: `{ funds, allocations, lineItems, checks, projects, ipuOrders, ipuOrderEmailSubject, ipuOrderEmailTemplate, updatedAt, updatedBy }`
+- Document shape: `{ funds, allocations, lineItems, checks, projects, ipuOrders, ipuOrderEmailSubject, ipuOrderEmailTemplate, ipuOrderEmailCompleted, updatedAt, updatedBy }`
 
 `ipuOrders` はIPU申請フォーム用の購入候補。`manufacturer`, `itemName`, `specification`, `catalogNumber`, `quantity` を基本に、必要に応じて `unitPriceYen`, `totalYen`, `sourceUrl`, `remarks`, `vendor`, `quoteNumber`, `quoteValidUntil` を保存する。表示は `品名 / 規格・品質 / 型番・品番 / 数量 / 単価 / 合計 / 業者名 / URL / 備考` の9項目コピーを主にし、品名は名称とメーカー名を並べ、備考は `○○会社名で見積もり` を自動生成する。単価候補が複数ある場合は `quoteCandidates` などの配列から候補表示できるようにし、金額はカンマなしの半角数字表示にする。不明値は静的ファイルへ埋めず画面では「要確認」と表示する。
 
 `ipuOrderEmailSubject` と `ipuOrderEmailTemplate` は、IPU注文欄でコピーできる固定の注文依頼メール件名・本文。連絡先を含むため静的ファイルには置かず、認証後にFirestoreから読み込む。
+
+`ipuOrderEmailCompleted` は注文依頼メールの送信完了状態を表すブール値（デフォルト: `false`）。`true` のとき、メール本文コピー欄を非表示にし、「注文依頼メール：送信完了済み」と「再表示する」ボタンを表示する。メールテンプレート本文や件名は削除せず保持され、`ipuOrderEmailCompleted` を `false` に戻すだけで復元できる。旧ドキュメントにこのフィールドがない場合は `false`（未完了）として扱う。
 
 購入案件は工程・予算計上・支払状態を分けて扱う。新規・更新データでは次の任意フィールドを使用し、未設定の旧データは画面側の互換レイヤーで既存の `status`、`statusLabel`、`next` から安全側に分類する。
 
