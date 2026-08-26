@@ -30,7 +30,8 @@ const statusLabels = {
   partial: "一部確認",
   unknown: "未確認",
   rough: "粗枠",
-  spent: "記録済み",
+  paid: "支払済",
+  spent: "支出負担行為済",
   provisional: "仮更新",
   fixed: "先引き",
   check: "要確認",
@@ -1620,27 +1621,61 @@ function allocationById(id) {
   return allocations().find((allocation) => allocation.id === id);
 }
 
+function getFundFixedReserve(fundId) {
+  if (!fundId) return 0;
+  return lineItems()
+    .filter((item) => item.fundId === fundId && item.status === "fixed")
+    .reduce((sum, item) => sum + (item.amountYen || 0), 0);
+}
+
+function getFundBreakdown(fundId) {
+  const fund = fundById(fundId);
+  const items = lineItems().filter((item) => item.fundId === fundId);
+  const paidYen = items
+    .filter((item) => item.status === "paid" || item.officialStatus === "支払済")
+    .reduce((sum, item) => sum + (item.amountYen || 0), 0);
+  const spentYen = items
+    .filter((item) => item.status === "spent" || item.officialStatus === "支出負担行為済")
+    .reduce((sum, item) => sum + (item.amountYen || 0), 0);
+  const provisionalYen = items
+    .filter((item) => item.status === "provisional" || item.officialStatus === "仮更新")
+    .reduce((sum, item) => sum + (item.amountYen || 0), 0);
+  const fixedReserveYen = items
+    .filter((item) => item.status === "fixed")
+    .reduce((sum, item) => sum + (item.amountYen || 0), 0);
+
+  const remainingYen = fund?.remainingYen;
+  const netEstimatedYen = Number.isFinite(remainingYen) ? remainingYen - fixedReserveYen : null;
+
+  return {
+    paidYen,
+    spentYen,
+    provisionalYen,
+    fixedReserveYen,
+    remainingYen,
+    netEstimatedYen,
+  };
+}
+
 function renderSummary() {
   const personal = fundById("personal2201");
   const project = fundById("project2202");
   const takeda = fundById("takeda7023");
-  const membershipReserve = lineItems()
-    .filter((item) => item.status === "fixed")
-    .reduce((sum, item) => sum + (item.amountYen || 0), 0);
+  const personalFixedReserve = getFundFixedReserve("personal2201");
   const unknownFunds = funds().filter((fund) => ["unknown", "rough"].includes(fund.status)).length;
 
   const cards = [
     {
       label: "2201 個人枠",
       value: formatYen(personal?.remainingYen),
-      body: "教育研究費。学会費を先に引いてから購入候補を判断する。",
+      body: "教育研究費。公式残額（支出負担行為済・支払済・仮更新控除後）。",
       tone: "green",
       fundId: "personal2201",
     },
     {
       label: "2201 差引後目安",
-      value: Number.isFinite(personal?.remainingYen) ? formatYen(personal.remainingYen - membershipReserve) : "未確認",
-      body: `学会費 ${formatYen(membershipReserve)} を全て未払いと仮定した残り。`,
+      value: Number.isFinite(personal?.remainingYen) ? formatYen(personal.remainingYen - personalFixedReserve) : "未確認",
+      body: `先引き予定 ${formatYen(personalFixedReserve)} 控除後の実質目安。`,
       tone: "blue",
       fundId: "personal2201",
     },
@@ -1798,17 +1833,26 @@ function openFundDetail(fundId) {
 
   state.activeFundId = fundId;
   const relatedItems = lineItems().filter((item) => item.fundId === fundId);
-  const usedItems = relatedItems.filter((item) => ["spent", "provisional"].includes(item.status));
-  const plannedItems = relatedItems.filter((item) => !["spent", "provisional"].includes(item.status));
+  const usedItems = relatedItems.filter((item) => ["spent", "provisional", "paid"].includes(item.status));
+  const plannedItems = relatedItems.filter((item) => !["spent", "provisional", "paid"].includes(item.status));
+
+  const breakdown = getFundBreakdown(fundId);
 
   elements.fundDetailCode.textContent = `${fund.code} / ${fund.category}`;
   elements.fundDetailTitle.textContent = fund.name;
-  elements.fundDetailMetrics.replaceChildren(
+
+  const metricCards = [
     renderMetric("総額", formatYen(fund.totalYen)),
-    renderMetric("本執行", formatYen(fund.executedYen)),
-    renderMetric("仮更新", formatYen(fund.provisionalYen)),
-    renderMetric("実質残額", formatYen(fund.remainingYen)),
-  );
+    renderMetric("支払済", formatYen(breakdown.paidYen)),
+    renderMetric("支出負担行為済", formatYen(breakdown.spentYen)),
+    renderMetric("仮更新", formatYen(breakdown.provisionalYen)),
+    renderMetric("公式残額", formatYen(fund.remainingYen)),
+  ];
+  if (breakdown.fixedReserveYen > 0) {
+    metricCards.push(renderMetric("差引後目安", formatYen(breakdown.netEstimatedYen)));
+  }
+
+  elements.fundDetailMetrics.replaceChildren(...metricCards);
   elements.usedItemsCount.textContent = `${usedItems.length}件`;
   elements.plannedItemsCount.textContent = `${plannedItems.length}件`;
   elements.usedItemsList.replaceChildren(...renderFundDetailItems(usedItems, "使用済み項目はまだありません。"));
@@ -1831,7 +1875,8 @@ function renderFundDetailItems(items, emptyMessage) {
     head.className = "detail-item-head";
     const title = document.createElement("h4");
     title.textContent = item.title;
-    head.append(title, statusBadge(statusLabels[item.status] || item.status, item.status));
+    const badgeLabel = item.officialStatus || statusLabels[item.status] || item.status;
+    head.append(title, statusBadge(badgeLabel, item.status));
 
     const amount = document.createElement("strong");
     amount.className = "detail-item-amount";
@@ -1884,12 +1929,12 @@ function renderLineItems() {
     if (state.activeFilter === "all") return true;
     if (state.activeFilter === "natto") return item.project === "Natto_MASH";
     if (state.activeFilter === "fixed") return item.status === "fixed";
-    if (state.activeFilter === "spent") return ["spent", "provisional"].includes(item.status);
+    if (state.activeFilter === "spent") return ["spent", "provisional", "paid"].includes(item.status);
     return item.status === state.activeFilter;
   });
 
   const rows = visible.map((item) => [
-    statusBadge(statusLabels[item.status] || item.status, item.status),
+    statusBadge(item.officialStatus || statusLabels[item.status] || item.status, item.status),
     item.title,
     fundById(item.fundId)?.name || "-",
     allocationById(item.allocationId)?.title || "-",

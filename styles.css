@@ -191,6 +191,13 @@ h4 {
   border-color: rgba(81, 109, 134, 0.24);
 }
 
+.status-pill[data-status="paid"] {
+  color: #1b633a;
+  background: rgba(46, 133, 80, 0.16);
+  border: 1px solid rgba(46, 133, 80, 0.35);
+  font-weight: 600;
+}
+
 .status-pill[data-status="spent"],
 .status-pill[data-status="confirmed"] {
   color: var(--green);
