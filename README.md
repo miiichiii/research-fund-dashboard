@@ -30,19 +30,68 @@ Natto_MASHを別ボードへ分けず、Funds / Allocations / Line items / Open 
 
 `ipuOrderEmailSubject` と `ipuOrderEmailTemplate` は、IPU注文欄でコピーできる固定の注文依頼メール件名・本文。連絡先を含むため静的ファイルには置かず、認証後にFirestoreから読み込む。
 
-購入案件は工程と予算計上を分けて扱う。新規・更新データでは次の任意フィールドを使用し、未設定の旧データは画面側の互換レイヤーで既存の `status`、`statusLabel`、`next` から安全側に分類する。
+購入案件は工程・予算計上・支払状態を分けて扱う。新規・更新データでは次の任意フィールドを使用し、未設定の旧データは画面側の互換レイヤーで既存の `status`、`statusLabel`、`next` から安全側に分類する。
 
-- `workflowStatus`: `considering` / `quote_requested` / `approval_in_progress` / `ordered` / `archived`
-- `budgetStatus`: `planned` / `committed` / `spent`
+### 状態モデル
+
+#### workflowStatus（購入工程）
+
+| 値 | 表示名 | 意味 |
+|---|---|---|
+| `considering` | 購入検討中 | まだ見積もり依頼もしていない段階 |
+| `quote_requested` | 見積依頼中 | 業者へ見積もりを依頼中。返答待ち |
+| `approval_in_progress` | 申請・手続中 | IPU申請など手続き中。発注前の承認待ち |
+| `ordered` | 発注済み | 発注済み。納品や検収待ち |
+| `archived` | 完了 / アーカイブ | すべて完了。履歴として保持 |
+
+#### budgetStatus（予算計上）
+
+| 値 | 表示名 | 意味 |
+|---|---|---|
+| `planned` | 使用予定 | 使うつもりだが、まだ確定していない |
+| `committed` | 発注・支払予定 | 発注済みで支払いが確定する予定 |
+| `spent` | 支払確定 | 実際に支払い済み |
+
+#### paymentStatus（支払状態） ※新規追加
+
+| 値 | 表示名 | 意味 |
+|---|---|---|
+| `unpaid` | 未払い | まだ支払いしていない |
+| `invoice_received` | 請求書受領 | 請求書を受け取った |
+| `payment_processing` | 支払処理中 | 支払い手続き中 |
+| `paid` | 支払い完了 | 支払い完了。検収済み |
+
+#### その他フィールド
+
 - `archived`: 完了案件を履歴として保持する場合は `true`
+- `fundId`: 案件ごとの財源（資金枠ID）。UIから変更可能
+- `finalAmountYen`: 最終支払額。見積もり金額と異なる場合に記録
+- `paymentStatus`: 支払い進捗。UIから変更可能。`paid` 設定時に `budgetStatus` も `spent` に自動更新
 
-`workflowStatus` は購入工程、`budgetStatus` は残額計算上の扱いであり、同じ意味として扱わない。たとえば発注済みは通常 `ordered + committed`、支払確定後は `archived + spent` とする。既存の `lineItems.status` は資金台帳表示との互換性のため直ちには削除しない。
+### ユーザーワークフロー
 
-IPU申請フォーム用のコピペ一覧には未発注案件だけを表示する。`workflowStatus` が `ordered` または `archived` の案件は一覧から除外するが、購入工程レーンとFirestore台帳には履歴として保持する。
+1. 購入検討中の案件を登録（`considering`）
+2. 業者へ見積もり依頼（`→ 見積依頼中`ボタン）
+3. IPU申請・手続き（`→ 申請・手続中`ボタン）
+4. 発注（`→ 発注済み`ボタン、または IPU申請用コピー欄の`発注済みにする`ボタン）
+5. 納品・検収後、支払状態を更新（支払セレクタで`支払い完了`を選択）
+6. 最終支払額を入力し、完了（`完了してアーカイブ`ボタン）
+
+完了案件は「完了案件を表示」トグルで表示でき、「アーカイブ解除 → 発注済みに戻す」で復元可能。
+
+### 状態の独立性
+
+`workflowStatus` は購入工程、`budgetStatus` は残額計算上の扱い、`paymentStatus` は実際の支払い進捗であり、同じ意味として扱わない。たとえば発注済みは通常 `ordered + committed + unpaid`、支払確定後は `archived + spent + paid` とする。既存の `lineItems.status` は資金台帳表示との互換性のため直ちには削除しない。
+
+### IPU申請用コピー
+
+IPU申請フォーム用のコピペ一覧には未発注案件だけを表示する。`workflowStatus` が `ordered` または `archived` の案件は一覧から除外するが、購入工程レーンとFirestore台帳には履歴として保持する。各品目に「発注済みにする」ボタンがあり、個別にIPU申請用コピー欄から購入工程へ移動できる。
+
+### 削除・アーカイブ
 
 削除できるのは、注文日・要求書番号がなく工程が `considering` の誤登録候補だけ。発注・手続開始後の案件は削除せず、完了時に `archived` として履歴を保持する。旧データに `id` がない場合も、既存フィールドの組み合わせで対象を特定する。
 
-発注済み案件の「完了としてアーカイブ」はFirestoreトランザクションで同じ案件IDの `ipuOrders` と `lineItems` をまとめて `workflowStatus: archived`、`budgetStatus: spent` にする。納品・検収・最終支払額を確認してから実行する。
+工程変更・アーカイブ・財源変更・支払状態更新はすべてFirestoreトランザクションで同じ案件IDの `ipuOrders` と `lineItems` をまとめて更新する。
 
 `app.js` には研究費の金額や明細を置かない。初期データは `seed.local.js` から、ログイン後に「初期データ投入」でFirestoreへ保存する。
 

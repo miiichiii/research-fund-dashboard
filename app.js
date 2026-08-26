@@ -51,6 +51,15 @@ const budgetStageLabels = {
   spent: "支払確定",
 };
 
+const paymentStatusLabels = {
+  unpaid: "未払い",
+  invoice_received: "請求書受領",
+  payment_processing: "支払処理中",
+  paid: "支払い完了",
+};
+
+const paymentStatuses = ["unpaid", "invoice_received", "payment_processing", "paid"];
+
 const emptyDashboard = {
   funds: [],
   allocations: [],
@@ -92,6 +101,7 @@ const state = {
   updatedBy: "",
   activeFilter: "all",
   activeFundId: null,
+  showArchivedOrders: false,
   unsubscribeDashboard: null,
 };
 
@@ -473,6 +483,13 @@ function renderIpuOrders() {
     const actions = document.createElement("div");
     actions.className = "ipu-order-actions";
     actions.append(statusBadge(order.statusLabel || "申請準備", order.status || "check"));
+    const markOrderedBtn = document.createElement("button");
+    markOrderedBtn.className = "ipu-order-mark-ordered";
+    markOrderedBtn.type = "button";
+    markOrderedBtn.textContent = "発注済みにする";
+    markOrderedBtn.setAttribute("aria-label", `${title.textContent}を発注済みにする`);
+    markOrderedBtn.addEventListener("click", () => markIpuOrderAsOrdered(order, markOrderedBtn));
+    actions.append(markOrderedBtn);
     if (canDeleteIpuOrder(order)) {
       const removeButton = document.createElement("button");
       removeButton.className = "ipu-order-delete";
@@ -516,7 +533,12 @@ function renderIpuOrders() {
 
 function renderPurchasePipeline() {
   const cases = buildPurchaseCases();
-  const lanes = workflowStages.map((stage) => {
+  const visibleStages = state.showArchivedOrders
+    ? workflowStages
+    : workflowStages.filter((s) => s.id !== "archived");
+  const archivedCount = cases.filter((c) => c.workflowStatus === "archived").length;
+
+  const lanes = visibleStages.map((stage) => {
     const lane = document.createElement("section");
     lane.className = "purchase-lane";
     lane.dataset.stage = stage.id;
@@ -540,8 +562,87 @@ function renderPurchasePipeline() {
     matching.forEach((purchaseCase) => lane.append(renderPurchaseCase(purchaseCase)));
     return lane;
   });
-  elements.purchasePipeline.replaceChildren(...lanes);
+
+  // Toggle for archived orders
+  const toggleWrap = document.createElement("div");
+  toggleWrap.className = "purchase-archive-toggle";
+  const toggleBtn = document.createElement("button");
+  toggleBtn.className = "purchase-case-action";
+  toggleBtn.type = "button";
+  toggleBtn.textContent = state.showArchivedOrders
+    ? `完了案件を非表示（${archivedCount}件）`
+    : `完了案件を表示（${archivedCount}件）`;
+  toggleBtn.addEventListener("click", () => {
+    state.showArchivedOrders = !state.showArchivedOrders;
+    renderPurchasePipeline();
+  });
+  toggleWrap.append(toggleBtn);
+
+  // Legend
+  const legend = renderPipelineLegend();
+
+  elements.purchasePipeline.replaceChildren(legend, ...lanes, toggleWrap);
 }
+
+function renderPipelineLegend() {
+  const legend = document.createElement("details");
+  legend.className = "pipeline-legend";
+  const summary = document.createElement("summary");
+  summary.textContent = "状態の凡例（クリックで開閉）";
+  const content = document.createElement("div");
+  content.className = "pipeline-legend-content";
+
+  const sections = [
+    {
+      title: "購入工程（workflowStatus）",
+      items: workflowStages.map((s) => `${s.label}: ${workflowDescriptions[s.id]}`),
+    },
+    {
+      title: "予算計上（budgetStatus）",
+      items: Object.entries(budgetStageLabels).map(([key, label]) => `${label}: ${budgetDescriptions[key]}`),
+    },
+    {
+      title: "支払状態（paymentStatus）",
+      items: Object.entries(paymentStatusLabels).map(([key, label]) => `${label}: ${paymentDescriptions[key]}`),
+    },
+  ];
+
+  sections.forEach(({ title, items }) => {
+    const h = document.createElement("h5");
+    h.textContent = title;
+    const ul = document.createElement("ul");
+    items.forEach((text) => {
+      const li = document.createElement("li");
+      li.textContent = text;
+      ul.append(li);
+    });
+    content.append(h, ul);
+  });
+
+  legend.append(summary, content);
+  return legend;
+}
+
+const workflowDescriptions = {
+  considering: "購入するか検討中。まだ見積もり依頼もしていない段階",
+  quote_requested: "業者へ見積もりを依頼中。返答待ち",
+  approval_in_progress: "IPU申請など手続き中。発注前の承認待ち",
+  ordered: "発注済み。納品や検収待ち",
+  archived: "すべて完了。履歴として保持",
+};
+
+const budgetDescriptions = {
+  planned: "使うつもりだが、まだ確定していない",
+  committed: "発注済みで支払いが確定する予定",
+  spent: "実際に支払い済み",
+};
+
+const paymentDescriptions = {
+  unpaid: "まだ支払いしていない",
+  invoice_received: "請求書を受け取った",
+  payment_processing: "支払い手続き中",
+  paid: "支払い完了。検収済み",
+};
 
 function buildPurchaseCases() {
   const cases = new Map();
@@ -632,10 +733,13 @@ function renderPurchaseCase(purchaseCase) {
   id.textContent = purchaseCase.caseId;
   const title = document.createElement("h5");
   title.textContent = purchaseCase.title;
+
+  const paymentStatus = inferPaymentStatus(purchaseCase);
   const meta = document.createElement("div");
   meta.className = "purchase-case-meta";
   meta.append(
     statusBadge(budgetStageLabels[purchaseCase.budgetStatus], `budget-${purchaseCase.budgetStatus}`),
+    statusBadge(paymentStatusLabels[paymentStatus], `payment-${paymentStatus}`),
     textSpan(purchaseCase.fundId || "財源未設定", "mini-label"),
   );
   const amount = document.createElement("strong");
@@ -645,14 +749,100 @@ function renderPurchaseCase(purchaseCase) {
   next.className = "purchase-case-next";
   next.textContent = purchaseCase.next;
   card.append(id, title, meta, amount, next);
-  if (purchaseCase.workflowStatus === "ordered") {
-    const archiveButton = document.createElement("button");
-    archiveButton.className = "purchase-case-archive";
-    archiveButton.type = "button";
-    archiveButton.textContent = "完了としてアーカイブ";
-    archiveButton.addEventListener("click", () => archivePurchaseCase(purchaseCase, archiveButton));
-    card.append(archiveButton);
+
+  const controls = document.createElement("div");
+  controls.className = "purchase-case-controls";
+
+  // Workflow advance buttons
+  const currentStageIndex = workflowStages.findIndex((s) => s.id === purchaseCase.workflowStatus);
+  if (purchaseCase.workflowStatus !== "archived") {
+    const nextStages = workflowStages.slice(currentStageIndex + 1);
+    nextStages.forEach((stage) => {
+      const btn = document.createElement("button");
+      btn.className = stage.id === "archived" ? "purchase-case-archive" : "purchase-case-action";
+      btn.type = "button";
+      btn.textContent = stage.id === "archived" ? "完了してアーカイブ" : `→ ${stage.label}`;
+      btn.addEventListener("click", () => advancePurchaseCaseWorkflow(purchaseCase, stage.id, btn));
+      controls.append(btn);
+    });
   }
+
+  // Restore from archive
+  if (purchaseCase.workflowStatus === "archived") {
+    const restoreBtn = document.createElement("button");
+    restoreBtn.className = "purchase-case-action";
+    restoreBtn.type = "button";
+    restoreBtn.textContent = "アーカイブ解除 → 発注済みに戻す";
+    restoreBtn.addEventListener("click", () => advancePurchaseCaseWorkflow(purchaseCase, "ordered", restoreBtn));
+    controls.append(restoreBtn);
+  }
+
+  // Fund source selector
+  const fundSelect = document.createElement("select");
+  fundSelect.className = "purchase-case-select";
+  fundSelect.setAttribute("aria-label", "財源選択");
+  const fundOptions = [{ id: "", name: "財源未設定" }, ...funds(), ...funds().length ? [] : [{ id: "_none", name: "(資金枠なし)" }]];
+  fundOptions.forEach((fund) => {
+    const opt = document.createElement("option");
+    opt.value = fund.id;
+    opt.textContent = fund.name;
+    if (fund.id === (purchaseCase.fundId || "")) opt.selected = true;
+    fundSelect.append(opt);
+  });
+  fundSelect.addEventListener("change", () => updatePurchaseCaseFundId(purchaseCase, fundSelect.value, fundSelect));
+
+  const fundRow = document.createElement("div");
+  fundRow.className = "purchase-case-field-row";
+  fundRow.append(textSpan("財源:", "purchase-case-field-label"), fundSelect);
+  controls.append(fundRow);
+
+  // Payment status selector
+  const paySelect = document.createElement("select");
+  paySelect.className = "purchase-case-select";
+  paySelect.setAttribute("aria-label", "支払状態");
+  paymentStatuses.forEach((ps) => {
+    const opt = document.createElement("option");
+    opt.value = ps;
+    opt.textContent = paymentStatusLabels[ps];
+    if (ps === paymentStatus) opt.selected = true;
+    paySelect.append(opt);
+  });
+  paySelect.addEventListener("change", () => updatePurchaseCasePayment(purchaseCase, paySelect.value, paySelect));
+
+  const payRow = document.createElement("div");
+  payRow.className = "purchase-case-field-row";
+  payRow.append(textSpan("支払:", "purchase-case-field-label"), paySelect);
+  controls.append(payRow);
+
+  // Final amount input
+  const finalAmount = purchaseCase.orders[0]?.finalAmountYen;
+  const amountInput = document.createElement("input");
+  amountInput.className = "purchase-case-input";
+  amountInput.type = "text";
+  amountInput.inputMode = "numeric";
+  amountInput.placeholder = "最終支払額（円）";
+  amountInput.setAttribute("aria-label", "最終支払額");
+  if (finalAmount != null && finalAmount !== "") amountInput.value = String(finalAmount);
+  const amountSaveBtn = document.createElement("button");
+  amountSaveBtn.className = "purchase-case-action purchase-case-action--small";
+  amountSaveBtn.type = "button";
+  amountSaveBtn.textContent = "保存";
+  amountSaveBtn.addEventListener("click", () => {
+    const raw = amountInput.value.trim().replace(/,/g, "").replace(/[０-９]/g, (d) => String.fromCharCode(d.charCodeAt(0) - 0xfee0));
+    const parsed = raw === "" ? null : Number(raw);
+    if (raw !== "" && (!Number.isFinite(parsed) || parsed < 0)) {
+      setSyncStatus("金額は半角数字で入力してください", "check");
+      return;
+    }
+    updatePurchaseCaseFinalAmount(purchaseCase, parsed, amountSaveBtn);
+  });
+
+  const amountRow = document.createElement("div");
+  amountRow.className = "purchase-case-field-row";
+  amountRow.append(textSpan("最終額:", "purchase-case-field-label"), amountInput, amountSaveBtn);
+  controls.append(amountRow);
+
+  card.append(controls);
   return card;
 }
 
@@ -692,6 +882,208 @@ async function archivePurchaseCase(purchaseCase, button) {
     setSyncStatus(`アーカイブエラー: ${error.code || error.message}`, "blocked");
     button.disabled = false;
     button.textContent = "完了としてアーカイブ";
+  }
+}
+
+function inferPaymentStatus(purchaseCase) {
+  const order = purchaseCase.orders?.[0] || {};
+  const item = purchaseCase.lineItems?.[0] || {};
+  const explicit = order.paymentStatus || item.paymentStatus;
+  if (paymentStatuses.includes(explicit)) return explicit;
+  const text = `${order.status || ""} ${order.statusLabel || ""} ${item.status || ""} ${item.next || ""}`;
+  if (/支払い完了|支払済|支払確定/.test(text) && !/支払済へ|支払確定へ/.test(text)) return "paid";
+  if (/支払処理中/.test(text)) return "payment_processing";
+  if (/請求書/.test(text)) return "invoice_received";
+  return "unpaid";
+}
+
+async function advancePurchaseCaseWorkflow(purchaseCase, targetStage, button) {
+  if (!state.user || button.disabled) return;
+  const targetLabel = workflowStages.find((s) => s.id === targetStage)?.label || targetStage;
+  const confirmed = window.confirm(
+    `「${purchaseCase.title}」を「${targetLabel}」に変更しますか？`,
+  );
+  if (!confirmed) return;
+
+  button.disabled = true;
+  button.textContent = "更新中…";
+  setSyncStatus("購入案件を更新中", "provisional");
+  try {
+    const budgetForStage = targetStage === "archived" ? "spent"
+      : targetStage === "ordered" ? "committed"
+      : undefined;
+    await runTransaction(db, async (transaction) => {
+      const reference = dashboardRef();
+      const snapshot = await transaction.get(reference);
+      if (!snapshot.exists()) throw new Error("dashboard-not-found");
+      const payload = snapshot.data();
+      const nextOrders = (Array.isArray(payload.ipuOrders) ? payload.ipuOrders : []).map((order) =>
+        getPurchaseCaseId(order) === purchaseCase.caseId
+          ? {
+              ...order,
+              workflowStatus: targetStage,
+              ...(budgetForStage ? { budgetStatus: budgetForStage } : {}),
+              archived: targetStage === "archived",
+            }
+          : order);
+      const nextItems = (Array.isArray(payload.lineItems) ? payload.lineItems : []).map((item) =>
+        getLineItemCaseId(item) === purchaseCase.caseId
+          ? {
+              ...item,
+              workflowStatus: targetStage,
+              ...(budgetForStage ? { budgetStatus: budgetForStage } : {}),
+              archived: targetStage === "archived",
+            }
+          : item);
+      transaction.update(reference, {
+        ipuOrders: nextOrders,
+        lineItems: nextItems,
+        updatedAt: serverTimestamp(),
+        updatedBy: state.user.email || state.user.uid,
+      });
+    });
+    setSyncStatus(`「${targetLabel}」に更新しました`, "confirmed");
+  } catch (error) {
+    setSyncStatus(`更新エラー: ${error.code || error.message}`, "blocked");
+    button.disabled = false;
+    button.textContent = `→ ${targetLabel}`;
+  }
+}
+
+async function updatePurchaseCaseFundId(purchaseCase, fundId, select) {
+  if (!state.user) return;
+  select.disabled = true;
+  setSyncStatus("財源を更新中", "provisional");
+  try {
+    await runTransaction(db, async (transaction) => {
+      const reference = dashboardRef();
+      const snapshot = await transaction.get(reference);
+      if (!snapshot.exists()) throw new Error("dashboard-not-found");
+      const payload = snapshot.data();
+      const nextOrders = (Array.isArray(payload.ipuOrders) ? payload.ipuOrders : []).map((order) =>
+        getPurchaseCaseId(order) === purchaseCase.caseId ? { ...order, fundId } : order);
+      const nextItems = (Array.isArray(payload.lineItems) ? payload.lineItems : []).map((item) =>
+        getLineItemCaseId(item) === purchaseCase.caseId ? { ...item, fundId } : item);
+      transaction.update(reference, {
+        ipuOrders: nextOrders,
+        lineItems: nextItems,
+        updatedAt: serverTimestamp(),
+        updatedBy: state.user.email || state.user.uid,
+      });
+    });
+    setSyncStatus("財源を更新しました", "confirmed");
+  } catch (error) {
+    setSyncStatus(`財源更新エラー: ${error.code || error.message}`, "blocked");
+  } finally {
+    select.disabled = false;
+  }
+}
+
+async function updatePurchaseCasePayment(purchaseCase, paymentStatus, select) {
+  if (!state.user) return;
+  select.disabled = true;
+  setSyncStatus("支払状態を更新中", "provisional");
+  try {
+    await runTransaction(db, async (transaction) => {
+      const reference = dashboardRef();
+      const snapshot = await transaction.get(reference);
+      if (!snapshot.exists()) throw new Error("dashboard-not-found");
+      const payload = snapshot.data();
+      const budgetStatus = paymentStatus === "paid" ? "spent" : undefined;
+      const nextOrders = (Array.isArray(payload.ipuOrders) ? payload.ipuOrders : []).map((order) =>
+        getPurchaseCaseId(order) === purchaseCase.caseId
+          ? { ...order, paymentStatus, ...(budgetStatus ? { budgetStatus } : {}) }
+          : order);
+      const nextItems = (Array.isArray(payload.lineItems) ? payload.lineItems : []).map((item) =>
+        getLineItemCaseId(item) === purchaseCase.caseId
+          ? { ...item, paymentStatus, ...(budgetStatus ? { budgetStatus } : {}) }
+          : item);
+      transaction.update(reference, {
+        ipuOrders: nextOrders,
+        lineItems: nextItems,
+        updatedAt: serverTimestamp(),
+        updatedBy: state.user.email || state.user.uid,
+      });
+    });
+    setSyncStatus("支払状態を更新しました", "confirmed");
+  } catch (error) {
+    setSyncStatus(`支払状態更新エラー: ${error.code || error.message}`, "blocked");
+  } finally {
+    select.disabled = false;
+  }
+}
+
+async function updatePurchaseCaseFinalAmount(purchaseCase, finalAmountYen, button) {
+  if (!state.user || button.disabled) return;
+  button.disabled = true;
+  button.textContent = "保存中…";
+  setSyncStatus("最終支払額を更新中", "provisional");
+  try {
+    await runTransaction(db, async (transaction) => {
+      const reference = dashboardRef();
+      const snapshot = await transaction.get(reference);
+      if (!snapshot.exists()) throw new Error("dashboard-not-found");
+      const payload = snapshot.data();
+      const nextOrders = (Array.isArray(payload.ipuOrders) ? payload.ipuOrders : []).map((order) =>
+        getPurchaseCaseId(order) === purchaseCase.caseId
+          ? { ...order, finalAmountYen: finalAmountYen ?? "" }
+          : order);
+      transaction.update(reference, {
+        ipuOrders: nextOrders,
+        updatedAt: serverTimestamp(),
+        updatedBy: state.user.email || state.user.uid,
+      });
+    });
+    setSyncStatus("最終支払額を保存しました", "confirmed");
+  } catch (error) {
+    setSyncStatus(`保存エラー: ${error.code || error.message}`, "blocked");
+  } finally {
+    button.disabled = false;
+    button.textContent = "保存";
+  }
+}
+
+async function markIpuOrderAsOrdered(order, button) {
+  if (!state.user || button.disabled) return;
+  const orderName = order.label || order.itemName || order.purchaseId || "この品目";
+  const confirmed = window.confirm(
+    `「${orderName}」を発注済みにしますか？\nIPU申請用コピー欄から除外され、購入工程の発注済みレーンに移動します。`,
+  );
+  if (!confirmed) return;
+
+  button.disabled = true;
+  button.textContent = "更新中…";
+  setSyncStatus("IPU注文品目を発注済みに更新中", "provisional");
+  try {
+    await runTransaction(db, async (transaction) => {
+      const reference = dashboardRef();
+      const snapshot = await transaction.get(reference);
+      if (!snapshot.exists()) throw new Error("dashboard-not-found");
+      const payload = snapshot.data();
+      const currentOrders = Array.isArray(payload.ipuOrders) ? payload.ipuOrders : [];
+      const targetIndex = findIpuOrderIndex(currentOrders, order);
+      if (targetIndex < 0) throw new Error("order-not-found");
+      const nextOrders = currentOrders.map((o, i) =>
+        i === targetIndex
+          ? { ...o, workflowStatus: "ordered", budgetStatus: "committed" }
+          : o);
+      const caseId = getPurchaseCaseId(order);
+      const nextItems = (Array.isArray(payload.lineItems) ? payload.lineItems : []).map((item) =>
+        getLineItemCaseId(item) === caseId
+          ? { ...item, workflowStatus: "ordered", budgetStatus: "committed" }
+          : item);
+      transaction.update(reference, {
+        ipuOrders: nextOrders,
+        lineItems: nextItems,
+        updatedAt: serverTimestamp(),
+        updatedBy: state.user.email || state.user.uid,
+      });
+    });
+    setSyncStatus("発注済みに更新しました", "confirmed");
+  } catch (error) {
+    setSyncStatus(`更新エラー: ${error.code || error.message}`, "blocked");
+    button.disabled = false;
+    button.textContent = "発注済みにする";
   }
 }
 
