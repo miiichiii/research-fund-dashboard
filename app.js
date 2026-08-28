@@ -79,10 +79,6 @@ const ipuPasteFields = [
   { label: "型番・品番", getValue: (order, candidate) => getCandidateCatalogNumber(order, candidate) },
   { label: "数量", getValue: (order) => formatOptionalInputNumber(order.quantity) },
   { label: "単価（円）", getValue: (order, candidate) => getCandidateUnitPrice(order, candidate) },
-  { label: "合計（円）", getValue: (order) => formatOptionalInputNumber(order.totalYen) },
-  { label: "業者名", getValue: (order, candidate) => candidate.companyName || order.vendor },
-  { label: "製品・価格URL", getValue: (order) => order.sourceUrl || order.officialProductUrl },
-  { label: "備考", getValue: (order, candidate) => buildQuoteRemark(order, candidate) },
 ];
 
 const app = initializeApp(firebaseConfig);
@@ -1442,8 +1438,8 @@ function renderIpuBulkCopyPanel(ordersWithCandidates) {
   note.className = "ipu-bulk-copy-note";
   const hasMultipleCandidates = ordersWithCandidates.some(({ candidates }) => candidates.length > 1);
   note.textContent = hasMultipleCandidates
-    ? "1行が1件、列は 品名 → 規格・品質 → 型番・品番 → 数量 → 単価 → 合計 → 業者名 → URL → 備考 です。左上セルから貼り付けられます。候補が複数ある品目は、まとめコピーでは先頭候補を使います。"
-    : "1行が1件、列は 品名 → 規格・品質 → 型番・品番 → 数量 → 単価 → 合計 → 業者名 → URL → 備考 です。左上セルから貼り付けると、複数件をまとめて入れられます。";
+    ? "1行が1件、列は 品名 → 規格・品質 → 型番・品番 → 数量 → 単価 です。左上セルから貼り付けられます。候補が複数ある品目は、まとめコピーでは先頭候補を使います。"
+    : "1行が1件、列は 品名 → 規格・品質 → 型番・品番 → 数量 → 単価 です。左上セルから貼り付けると、複数件をまとめて入れられます。";
 
   panel.append(head, note);
   return panel;
