@@ -17,6 +17,12 @@ import {
   setDoc,
 } from "https://www.gstatic.com/firebasejs/12.14.0/firebase-firestore.js";
 import { firebaseConfig } from "./firebase-config.js";
+import {
+  getLineItemCaseId,
+  getPurchaseCaseId,
+  markIpuOrderCaseAsOrdered,
+  markPurchaseLineItemCaseAsOrdered,
+} from "./purchase-case-state.js";
 
 const DASHBOARD_COLLECTION = "researchFundDashboards";
 const DASHBOARD_ID = "main";
@@ -485,10 +491,19 @@ function renderIpuOrders() {
     actions.className = "ipu-order-actions";
     actions.append(statusBadge(order.statusLabel || "申請準備", order.status || "check"));
     const markOrderedBtn = document.createElement("button");
+    const matchingOrderCount = ipuOrders().filter((candidate) =>
+      getPurchaseCaseId(candidate) === getPurchaseCaseId(order)).length;
     markOrderedBtn.className = "ipu-order-mark-ordered";
     markOrderedBtn.type = "button";
-    markOrderedBtn.textContent = "発注済みにする";
-    markOrderedBtn.setAttribute("aria-label", `${title.textContent}を発注済みにする`);
+    markOrderedBtn.textContent = matchingOrderCount > 1
+      ? `同じ案件${matchingOrderCount}件を発注済みにする`
+      : "発注済みにする";
+    markOrderedBtn.setAttribute(
+      "aria-label",
+      matchingOrderCount > 1
+        ? `${title.textContent}を含む同じ購入案件${matchingOrderCount}件を発注済みにする`
+        : `${title.textContent}を発注済みにする`,
+    );
     markOrderedBtn.addEventListener("click", () => markIpuOrderAsOrdered(order, markOrderedBtn));
     actions.append(markOrderedBtn);
     if (canDeleteIpuOrder(order)) {
@@ -665,16 +680,6 @@ function buildPurchaseCases() {
   return Array.from(cases.values())
     .map(normalizePurchaseCase)
     .sort((a, b) => (b.sortDate || "").localeCompare(a.sortDate || "") || a.title.localeCompare(b.title, "ja"));
-}
-
-function getPurchaseCaseId(order) {
-  return order.caseId || order.purchaseId || order.id || `ipu-order-${order.order || order.itemName}`;
-}
-
-function getLineItemCaseId(item) {
-  if (item.caseId || item.purchaseId) return item.caseId || item.purchaseId;
-  if (item.order === 180 || normalizeText(item.title).includes("Bambu Lab PLAマット")) return "PUR-2026-0728-01";
-  return `line-item-${item.order || normalizeText(item.title)}`;
 }
 
 function isPurchaseLineItem(item) {
@@ -1047,8 +1052,13 @@ async function updatePurchaseCaseFinalAmount(purchaseCase, finalAmountYen, butto
 async function markIpuOrderAsOrdered(order, button) {
   if (!state.user || button.disabled) return;
   const orderName = order.label || order.itemName || order.purchaseId || "この品目";
+  const caseId = getPurchaseCaseId(order);
+  const displayedOrderCount = ipuOrders().filter((candidate) => getPurchaseCaseId(candidate) === caseId).length;
+  const scopeMessage = displayedOrderCount > 1
+    ? `同じ購入案件の${displayedOrderCount}件をまとめて発注済みにします。`
+    : "この品目を発注済みにします。";
   const confirmed = window.confirm(
-    `「${orderName}」を発注済みにしますか？\nIPU申請用コピー欄から除外され、購入工程の発注済みレーンに移動します。`,
+    `「${orderName}」を発注済みにしますか？\n${scopeMessage}\nIPU申請用コピー欄から除外され、購入工程の発注済みレーンに移動します。`,
   );
   if (!confirmed) return;
 
@@ -1056,23 +1066,17 @@ async function markIpuOrderAsOrdered(order, button) {
   button.textContent = "更新中…";
   setSyncStatus("IPU注文品目を発注済みに更新中", "provisional");
   try {
+    let updatedOrderCount = 0;
     await runTransaction(db, async (transaction) => {
       const reference = dashboardRef();
       const snapshot = await transaction.get(reference);
       if (!snapshot.exists()) throw new Error("dashboard-not-found");
       const payload = snapshot.data();
       const currentOrders = Array.isArray(payload.ipuOrders) ? payload.ipuOrders : [];
-      const targetIndex = findIpuOrderIndex(currentOrders, order);
-      if (targetIndex < 0) throw new Error("order-not-found");
-      const nextOrders = currentOrders.map((o, i) =>
-        i === targetIndex
-          ? { ...o, workflowStatus: "ordered", budgetStatus: "committed" }
-          : o);
-      const caseId = getPurchaseCaseId(order);
-      const nextItems = (Array.isArray(payload.lineItems) ? payload.lineItems : []).map((item) =>
-        getLineItemCaseId(item) === caseId
-          ? { ...item, workflowStatus: "ordered", budgetStatus: "committed" }
-          : item);
+      updatedOrderCount = currentOrders.filter((candidate) => getPurchaseCaseId(candidate) === caseId).length;
+      if (updatedOrderCount === 0) throw new Error("order-not-found");
+      const nextOrders = markIpuOrderCaseAsOrdered(currentOrders, caseId);
+      const nextItems = markPurchaseLineItemCaseAsOrdered(payload.lineItems, caseId);
       transaction.update(reference, {
         ipuOrders: nextOrders,
         lineItems: nextItems,
@@ -1080,7 +1084,10 @@ async function markIpuOrderAsOrdered(order, button) {
         updatedBy: state.user.email || state.user.uid,
       });
     });
-    setSyncStatus("発注済みに更新しました", "confirmed");
+    setSyncStatus(
+      updatedOrderCount > 1 ? `同じ購入案件${updatedOrderCount}件を発注済みに更新しました` : "発注済みに更新しました",
+      "confirmed",
+    );
   } catch (error) {
     setSyncStatus(`更新エラー: ${error.code || error.message}`, "blocked");
     button.disabled = false;

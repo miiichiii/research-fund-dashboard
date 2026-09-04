@@ -87,7 +87,7 @@ Natto_MASHを別ボードへ分けず、Funds / Allocations / Line items / Open 
 
 ### IPU申請用コピー
 
-IPU申請フォーム用のコピペ一覧には未発注案件だけを表示する。`workflowStatus` が `ordered` または `archived` の案件は一覧から除外するが、購入工程レーンとFirestore台帳には履歴として保持する。各品目に「発注済みにする」ボタンがあり、個別にIPU申請用コピー欄から購入工程へ移動できる。
+IPU申請フォーム用のコピペ一覧には未発注案件だけを表示する。`workflowStatus` が `ordered` または `archived` の案件は一覧から除外するが、購入工程レーンとFirestore台帳には履歴として保持する。各品目に「発注済みにする」ボタンがあり、同じ `purchaseId` / `caseId` の複数規格・複数行は一つの購入案件としてまとめて購入工程へ移動する。
 
 ### 削除・アーカイブ
 
