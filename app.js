@@ -83,8 +83,9 @@ const ipuPasteFields = [
   { label: "品名", getValue: (order, candidate) => buildProductNameValue(order, candidate) },
   { label: "規格・品質", getValue: (order, candidate) => getCandidateCapacity(order, candidate) },
   { label: "型番・品番", getValue: (order, candidate) => getCandidateCatalogNumber(order, candidate) },
-  { label: "数量", getValue: (order) => formatOptionalInputNumber(order.quantity) },
+  { label: "数量", getValue: (order) => formatIpuQuantity(order.quantity) },
   { label: "単価（円）", getValue: (order, candidate) => getCandidateUnitPrice(order, candidate) },
+  { label: "会社名", getValue: (order, candidate) => candidate.companyName },
 ];
 
 const app = initializeApp(firebaseConfig);
@@ -1285,8 +1286,14 @@ function getCandidateCatalogNumber(order, candidate) {
   return pickCopyValue(candidate.catalogNumber, order.catalogNumber);
 }
 
+function formatIpuQuantity(value) {
+  const quantity = formatOptionalInputNumber(value);
+  return quantity ? `${quantity}個` : "";
+}
+
 function getCandidateUnitPrice(order, candidate) {
-  return formatOptionalInputNumber(pickCopyValue(candidate.unitPriceYen, order.unitPriceYen));
+  const price = formatOptionalInputNumber(pickCopyValue(candidate.unitPriceYen, order.unitPriceYen));
+  return price ? `${price}円` : "";
 }
 
 function buildQuoteRemark(order, candidate) {
@@ -1400,7 +1407,6 @@ function renderIpuPasteBlock(order, candidate, index, total) {
   block.append(quickCopy, formFields);
 
   const referenceFields = [
-    ["会社名", candidate.companyName],
     ["公式製品ページ", order.officialProductUrl !== order.sourceUrl ? order.officialProductUrl : ""],
   ].filter(([, value]) => hasCopyValue(value));
 
@@ -1445,8 +1451,8 @@ function renderIpuBulkCopyPanel(ordersWithCandidates) {
   note.className = "ipu-bulk-copy-note";
   const hasMultipleCandidates = ordersWithCandidates.some(({ candidates }) => candidates.length > 1);
   note.textContent = hasMultipleCandidates
-    ? "1行が1件、列は 品名 → 規格・品質 → 型番・品番 → 数量 → 単価 です。左上セルから貼り付けられます。候補が複数ある品目は、まとめコピーでは先頭候補を使います。"
-    : "1行が1件、列は 品名 → 規格・品質 → 型番・品番 → 数量 → 単価 です。左上セルから貼り付けると、複数件をまとめて入れられます。";
+    ? "1行が1件、列は 品名 → 規格・品質 → 型番・品番 → 数量 → 単価 → 会社名 です。左上セルから貼り付けられます。候補が複数ある品目は、まとめコピーでは先頭候補を使います。"
+    : "1行が1件、列は 品名 → 規格・品質 → 型番・品番 → 数量 → 単価 → 会社名 です。左上セルから貼り付けると、複数件をまとめて入れられます。";
 
   panel.append(head, note);
   return panel;

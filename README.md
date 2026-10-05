@@ -26,7 +26,7 @@ Natto_MASHを別ボードへ分けず、Funds / Allocations / Line items / Open 
 - Firestore document: `researchFundDashboards/main`
 - Document shape: `{ funds, allocations, lineItems, checks, projects, ipuOrders, ipuOrderEmailSubject, ipuOrderEmailTemplate, ipuOrderEmailCompleted, updatedAt, updatedBy }`
 
-`ipuOrders` はIPU申請フォーム用の購入候補。`manufacturer`, `itemName`, `specification`, `catalogNumber`, `quantity` を基本に、必要に応じて `unitPriceYen`, `totalYen`, `sourceUrl`, `remarks`, `vendor`, `quoteNumber`, `quoteValidUntil` を保存する。表示は `品名 / 規格・品質 / 型番・品番 / 数量 / 単価` の5項目コピーを主にし、品名は名称とメーカー名を並べる。単価候補が複数ある場合は `quoteCandidates` などの配列から候補表示できるようにし、金額はカンマなしの半角数字表示にする。不明値は静的ファイルへ埋めず画面では「要確認」と表示する。
+`ipuOrders` はIPU申請フォーム用の購入候補。`manufacturer`, `itemName`, `specification`, `catalogNumber`, `quantity` を基本に、必要に応じて `unitPriceYen`, `totalYen`, `sourceUrl`, `remarks`, `vendor`, `quoteNumber`, `quoteValidUntil` を保存する。表示は `品名 / 規格・品質 / 型番・品番 / 数量 / 単価 / 会社名` の6項目コピーを主にし、品名は名称とメーカー名を並べる。単価候補が複数ある場合は `quoteCandidates` などの配列から候補表示できるようにし、数量は `1個`、単価は `1622円` のようにカンマなしの半角数字と単位でコピーする。会社名はメーカーとは別に販売会社名（候補別の会社名・vendor等）を使う。不明値は静的ファイルへ埋めず画面では「要確認」と表示する。
 
 `ipuOrderEmailSubject` と `ipuOrderEmailTemplate` は、IPU注文欄でコピーできる固定の注文依頼メール件名・本文。連絡先を含むため静的ファイルには置かず、認証後にFirestoreから読み込む。
 
